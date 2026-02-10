@@ -1233,45 +1233,64 @@ app.MapGet("/callback", async (
             user = existingUser;
             user.LastLoginAt = DateTime.UtcNow;
             db.Users.Update(user);
-            Console.WriteLine($" Updating existing user's music profile: {user.Email}");
+            Console.WriteLine($" Existing user login: {user.Email}");
 
-            // Fetch fresh music data
-            var topSongs = await spotify.GetUserTopSongsAsync(10);
-            var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
-            var topGenres = await spotify.GetUserTopGenresAsync(20);
-
-            // Update or create music profile
-            if (user.MusicProfile == null)
+            // Try to fetch fresh music data (non-critical)
+            try
             {
-                user.MusicProfile = new MusicProfile
+                Console.WriteLine(" Attempting to update music profile with fresh Spotify data...");
+
+                var topSongs = await spotify.GetUserTopSongsAsync(10);
+                var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
+                var topGenres = await spotify.GetUserTopGenresAsync(20);
+
+                Console.WriteLine($" Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
+
+                // Update or create music profile
+                if (user.MusicProfile == null)
                 {
-                    UserId = user.Id,
-                    FavoriteGenres = topGenres.Select(g => g.Trim()).ToList(),
-                    FavoriteArtists = topArtists.Select(a => a.Name.Trim()).ToList(),
-                    FavoriteSongs = topSongs.Select(s => s.Trim()).ToList()
-                };
-                db.MusicProfiles.Add(user.MusicProfile);
+                    Console.WriteLine(" Creating new music profile for existing user");
+                    user.MusicProfile = new MusicProfile
+                    {
+                        UserId = user.Id,
+                        FavoriteGenres = topGenres.Select(g => g.Trim()).ToList(),
+                        FavoriteArtists = topArtists.Select(a => a.Name.Trim()).ToList(),
+                        FavoriteSongs = topSongs.Select(s => s.Trim()).ToList()
+                    };
+                    db.MusicProfiles.Add(user.MusicProfile);
+                }
+                else
+                {
+                    Console.WriteLine(" Updating existing music profile");
+                    user.MusicProfile.FavoriteGenres.Clear();
+                    user.MusicProfile.FavoriteGenres.AddRange(topGenres.Select(g => g.Trim()));
+
+                    user.MusicProfile.FavoriteArtists.Clear();
+                    user.MusicProfile.FavoriteArtists.AddRange(topArtists.Select(a => a.Name.Trim()));
+
+                    user.MusicProfile.FavoriteSongs.Clear();
+                    user.MusicProfile.FavoriteSongs.AddRange(topSongs.Select(s => s.Trim()));
+
+                    db.Entry(user.MusicProfile).State = EntityState.Modified;
+                }
+
+                Console.WriteLine($" Music profile updated successfully");
             }
-            else
+            catch (Exception spotifyEx)
             {
-                // Clear existing lists first, then add new items
-                user.MusicProfile.FavoriteGenres.Clear();
-                user.MusicProfile.FavoriteGenres.AddRange(topGenres.Select(g => g.Trim()));
+                // Log the error but continue with login
+                Console.WriteLine($" ⚠️ Failed to update music profile: {spotifyEx.Message}");
+                Console.WriteLine(" Continuing with existing music profile");
 
-                user.MusicProfile.FavoriteArtists.Clear();
-                user.MusicProfile.FavoriteArtists.AddRange(topArtists.Select(a => a.Name.Trim()));
-
-                user.MusicProfile.FavoriteSongs.Clear();
-                user.MusicProfile.FavoriteSongs.AddRange(topSongs.Select(s => s.Trim()));
-
-                db.Entry(user.MusicProfile).State = EntityState.Modified;
+                if (user.MusicProfile == null)
+                {
+                    Console.WriteLine(" ⚠️ User has no music profile - will complete it manually");
+                }
             }
 
             await db.SaveChangesAsync();
-
-            Console.WriteLine($" Existing user music profile updated: {user.Email} (ID: {user.Id})");
+            Console.WriteLine($" User saved: {user.Email}");
         }
-
         // Generate auth token
         var token = Guid.NewGuid().ToString();
 
