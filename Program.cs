@@ -249,7 +249,7 @@ app.MapPost("/admin/fix-uuid-types", async (AppDbContext db) =>
 {
     try
     {
-        Console.WriteLine("Starting UUID type conversion...");
+        Console.WriteLine("Starting UUID and DateTime type conversion...");
 
         string sql = @"
 -- Drop all foreign key constraints
@@ -276,6 +276,14 @@ ALTER TABLE ""Messages"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
 ALTER TABLE ""Messages"" ALTER COLUMN ""FromUserId"" TYPE uuid USING ""FromUserId""::uuid;
 ALTER TABLE ""Messages"" ALTER COLUMN ""ToUserId"" TYPE uuid USING ""ToUserId""::uuid;
 
+-- Convert all DateTime columns to timestamp
+ALTER TABLE ""Users"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
+ALTER TABLE ""Users"" ALTER COLUMN ""LastLoginAt"" TYPE timestamp USING ""LastLoginAt""::timestamp;
+ALTER TABLE ""Likes"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
+ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
+ALTER TABLE ""Messages"" ALTER COLUMN ""SentAt"" TYPE timestamp USING ""SentAt""::timestamp;
+ALTER TABLE ""Messages"" ALTER COLUMN ""ReadAt"" TYPE timestamp USING ""ReadAt""::timestamp;
+
 -- Recreate foreign key constraints
 ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_FromUserId"" FOREIGN KEY (""FromUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
 ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_ToUserId"" FOREIGN KEY (""ToUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
@@ -289,12 +297,12 @@ ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Us
 
         await db.Database.ExecuteSqlRawAsync(sql);
 
-        Console.WriteLine("UUID conversion completed successfully!");
+        Console.WriteLine("UUID and DateTime conversion completed successfully!");
 
         return Results.Ok(new
         {
             success = true,
-            message = "Database UUID types fixed successfully! Please restart your application.",
+            message = "Database UUID and DateTime types fixed successfully! Please restart your application.",
             timestamp = DateTime.UtcNow
         });
     }
@@ -310,9 +318,9 @@ ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Us
         );
     }
 })
-.WithName("FixUuidTypes")
-.WithSummary("⚠️ ADMIN: Fix UUID column types in PostgreSQL")
-.WithDescription("Converts text columns to UUID type. Run this ONCE to fix the schema, then restart the app.");
+.WithName("FixDatabaseTypes")
+.WithSummary("ADMIN: Fix UUID and DateTime column types in PostgreSQL")
+.WithDescription("Converts text columns to UUID and timestamp types. Run this ONCE to fix the schema, then restart the app.");
 
 // Get top tracks from an artist
 app.MapGet("/spotify/artist-top-tracks"!, async (
