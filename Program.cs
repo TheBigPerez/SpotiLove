@@ -1213,6 +1213,7 @@ app.MapGet("/callback", async (
                 Bio = null,
                 Location = null,
                 CreatedAt = DateTime.UtcNow,
+                LastLoginAt = DateTime.UtcNow,
                 MusicProfile = new MusicProfile
                 {
                     FavoriteGenres = topGenres.Select(g => g.Trim()).ToList(),
