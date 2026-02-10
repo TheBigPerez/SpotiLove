@@ -1079,12 +1079,11 @@ app.MapGet("/callback", async (
     }
     try
     {
-        // Log ALL query parameters and request details
         Console.WriteLine("=== CALLBACK DEBUG START ===");
         Console.WriteLine($"Full URL: {req.Scheme}://{req.Host}{req.Path}{req.QueryString}");
         Console.WriteLine($"Query String: {req.QueryString}");
         Console.WriteLine($"Method: {req.Method}");
-        Console.WriteLine($"Headers:");
+        Console.WriteLine("Headers:");
         foreach (var header in req.Headers)
         {
             Console.WriteLine($"  {header.Key}: {header.Value}");
@@ -1111,7 +1110,6 @@ app.MapGet("/callback", async (
         {
             Console.WriteLine(" Missing authorization code - stopping redirect loop");
 
-            // Return HTML error page instead of redirecting to avoid loop
             var errorHtml = @"
 <!DOCTYPE html>
 <html>
@@ -1162,11 +1160,9 @@ app.MapGet("/callback", async (
 
         Console.WriteLine(" Valid callback code received");
 
-        // Connect to Spotify
         await spotify.ConnectUserAsync(code);
         Console.WriteLine(" Connected to Spotify API");
 
-        // Fetch user profile
         var spotifyProfile = await spotify.GetUserProfileAsync();
 
         if (spotifyProfile == null || string.IsNullOrEmpty(spotifyProfile.Email))
@@ -1177,7 +1173,6 @@ app.MapGet("/callback", async (
 
         Console.WriteLine($" Spotify email: {spotifyProfile.Email}");
 
-        // Check for existing user
         var existingUser = await db.Users
             .Include(u => u.MusicProfile)
             .FirstOrDefaultAsync(u => u.Email == spotifyProfile.Email);
@@ -1187,14 +1182,12 @@ app.MapGet("/callback", async (
 
         if (existingUser == null)
         {
-            //Create account with music profile
             isNewUser = true;
             Console.WriteLine($" Creating new user for: {spotifyProfile.Email}");
 
             var randomPassword = Guid.NewGuid().ToString();
             var hashedPassword = hasher.HashPassword(null!, randomPassword);
 
-            //Fetch music data BEFORE creating user
             Console.WriteLine(" Fetching Spotify music data...");
             var topSongs = await spotify.GetUserTopSongsAsync(10);
             var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
@@ -1207,9 +1200,9 @@ app.MapGet("/callback", async (
                 Name = spotifyProfile.DisplayName ?? spotifyProfile.Id,
                 Email = spotifyProfile.Email,
                 PasswordHash = hashedPassword,
-                Age = 0,  // Will be set in CompleteProfilePage
-                Gender = "",  // Will be set in CompleteProfilePage
-                SexualOrientation = null,  // Will be set in CompleteProfilePage
+                Age = 0,
+                Gender = "",
+                SexualOrientation = null,
                 Bio = null,
                 Location = null,
                 CreatedAt = DateTime.UtcNow,
@@ -1229,13 +1222,11 @@ app.MapGet("/callback", async (
         }
         else
         {
-            //EXISTING USER - Update music profile
             user = existingUser;
             user.LastLoginAt = DateTime.UtcNow;
             db.Users.Update(user);
             Console.WriteLine($" Existing user login: {user.Email}");
 
-            // Try to fetch fresh music data (non-critical)
             try
             {
                 Console.WriteLine(" Attempting to update music profile with fresh Spotify data...");
@@ -1246,7 +1237,6 @@ app.MapGet("/callback", async (
 
                 Console.WriteLine($" Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
 
-                // Update or create music profile
                 if (user.MusicProfile == null)
                 {
                     Console.WriteLine(" Creating new music profile for existing user");
@@ -1278,28 +1268,26 @@ app.MapGet("/callback", async (
             }
             catch (Exception spotifyEx)
             {
-                // Log the error but continue with login
-                Console.WriteLine($" ⚠️ Failed to update music profile: {spotifyEx.Message}");
+                Console.WriteLine($"Failed to update music profile: {spotifyEx.Message}");
                 Console.WriteLine(" Continuing with existing music profile");
 
                 if (user.MusicProfile == null)
                 {
-                    Console.WriteLine(" ⚠️ User has no music profile - will complete it manually");
+                    Console.WriteLine("User has no music profile - will complete it manually");
                 }
             }
 
             await db.SaveChangesAsync();
             Console.WriteLine($" User saved: {user.Email}");
         }
-        // Generate auth token
+
         var token = Guid.NewGuid().ToString();
 
-        // Build deep link
         var deepLinkUrl = $"spotilove://auth/success?token={Uri.EscapeDataString(token)}&userId={user.Id}&isNewUser={isNewUser}&name={Uri.EscapeDataString(user.Name ?? "User")}";
 
         Console.WriteLine($" Redirecting to app: {deepLinkUrl}");
 
-        // Return HTML redirect page
+        //Enhanced HTML with BOTH automatic redirect AND manual button
         var html = $@"
 <!DOCTYPE html>
 <html>
@@ -1341,7 +1329,7 @@ app.MapGet("/callback", async (
         h1 {{ margin: 0 0 10px; font-size: 28px; }}
         p {{ margin: 10px 0; opacity: 0.9; }}
         .manual-link {{
-            margin-top: 20px;
+            margin-top: 30px;
             padding: 15px 30px;
             background: #1db954;
             color: white;
@@ -1349,6 +1337,15 @@ app.MapGet("/callback", async (
             border-radius: 25px;
             display: inline-block;
             font-weight: bold;
+            font-size: 16px;
+        }}
+        .manual-link:hover {{
+            background: #1ed760;
+        }}
+        #countdown {{
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 10px;
         }}
     </style>
 </head>
@@ -1357,13 +1354,64 @@ app.MapGet("/callback", async (
         <div class='spinner'></div>
         <h1>✨ {(isNewUser ? "Welcome to SpotiLove!" : "Welcome Back!")}</h1>
         <p>{(isNewUser ? "Your music profile has been imported!" : "Your music profile has been updated!")}</p>
-        <p>Redirecting you back to the app...</p>
-        <p style='font-size: 14px; opacity: 0.7;'>If you're not redirected automatically, click below:</p>
-        <a href='{deepLinkUrl}' class='manual-link'>Open SpotiLove</a>
+        <p style='font-size: 14px; opacity: 0.7;'>Attempting to open SpotiLove app...</p>
+        <div id='countdown'>Redirecting in <span id='timer'>3</span> seconds</div>
+        
+        <!-- MANUAL BUTTON - appears after countdown -->
+        <div id='manualButton' style='display: none;'>
+            <p style='font-size: 14px; margin-top: 30px;'>App didn't open automatically?</p>
+            <a href='{deepLinkUrl}' class='manual-link' onclick='attemptRedirect()'>
+                📱 Open SpotiLove App
+            </a>
+        </div>
     </div>
+    
     <script>
+        const deepLink = '{deepLinkUrl}';
+        let countdown = 3;
+        
+        // Countdown timer
+        const countdownInterval = setInterval(() => {{
+            countdown--;
+            document.getElementById('timer').textContent = countdown;
+            
+            if (countdown <= 0) {{
+                clearInterval(countdownInterval);
+                document.getElementById('countdown').style.display = 'none';
+            }}
+        }}, 1000);
+        
+        // Attempt automatic redirect
+        function attemptRedirect() {{
+            console.log('Attempting to open:', deepLink);
+            
+            // Try multiple methods to open the deep link
+            
+            // Method 1: Direct window.location
+            window.location.href = deepLink;
+            
+            // Method 2: Create hidden iframe (works on some Android browsers)
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLink;
+            document.body.appendChild(iframe);
+            
+            // Method 3: Create temporary link and click it
+            const link = document.createElement('a');
+            link.href = deepLink;
+            link.click();
+            
+            return false;
+        }}
+        
+        // Initial automatic redirect attempt
         setTimeout(() => {{
-            window.location.href = '{deepLinkUrl}';
+            attemptRedirect();
+            
+            // Show manual button after 3 seconds
+            setTimeout(() => {{
+                document.getElementById('manualButton').style.display = 'block';
+            }}, 3000);
         }}, 1500);
     </script>
 </body>
@@ -1403,14 +1451,23 @@ app.MapGet("/callback", async (
             max-width: 400px;
         }}
         h1 {{ color: #ff4444; }}
-        a {{ color: #1db954; text-decoration: none; font-weight: bold; }}
+        a {{ 
+            color: white;
+            background: #1db954;
+            padding: 12px 24px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 20px;
+        }}
     </style>
 </head>
 <body>
     <div class='container'>
         <h1> Authentication Failed</h1>
         <p>{ex.Message}</p>
-        <p><a href='{errorDeepLink}'>Return to App</a></p>
+        <a href='{errorDeepLink}'>Return to App</a>
     </div>
 </body>
 </html>";
@@ -1421,6 +1478,7 @@ app.MapGet("/callback", async (
 .WithName("SpotifyCallback")
 .WithSummary("Handles Spotify OAuth callback")
 .WithDescription("Processes Spotify authorization code and creates/logs in user with music profile");
+
 app.MapGet("/login/test", () =>
 {
     return Results.Ok(new
