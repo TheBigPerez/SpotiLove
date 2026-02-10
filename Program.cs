@@ -244,6 +244,76 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
 })
 .WithName("DebugAllUsers")
 .WithSummary("Debug: View all users in database");
+
+app.MapPost("/admin/fix-uuid-types", async (AppDbContext db) =>
+{
+    try
+    {
+        Console.WriteLine("Starting UUID type conversion...");
+
+        string sql = @"
+-- Drop all foreign key constraints
+ALTER TABLE ""Likes"" DROP CONSTRAINT IF EXISTS ""FK_Likes_Users_FromUserId"";
+ALTER TABLE ""Likes"" DROP CONSTRAINT IF EXISTS ""FK_Likes_Users_ToUserId"";
+ALTER TABLE ""Messages"" DROP CONSTRAINT IF EXISTS ""FK_Messages_Users_FromUserId"";
+ALTER TABLE ""Messages"" DROP CONSTRAINT IF EXISTS ""FK_Messages_Users_ToUserId"";
+ALTER TABLE ""MusicProfiles"" DROP CONSTRAINT IF EXISTS ""FK_MusicProfiles_Users_UserId"";
+ALTER TABLE ""UserImages"" DROP CONSTRAINT IF EXISTS ""FK_UserImages_Users_UserId"";
+ALTER TABLE ""UserSuggestionQueues"" DROP CONSTRAINT IF EXISTS ""FK_UserSuggestionQueues_Users_UserId"";
+ALTER TABLE ""UserSuggestionQueues"" DROP CONSTRAINT IF EXISTS ""FK_UserSuggestionQueues_Users_SuggestedUserId"";
+
+-- Convert all ID columns to UUID
+ALTER TABLE ""Users"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
+ALTER TABLE ""MusicProfiles"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
+ALTER TABLE ""MusicProfiles"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
+ALTER TABLE ""UserImages"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
+ALTER TABLE ""UserImages"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
+ALTER TABLE ""Likes"" ALTER COLUMN ""FromUserId"" TYPE uuid USING ""FromUserId""::uuid;
+ALTER TABLE ""Likes"" ALTER COLUMN ""ToUserId"" TYPE uuid USING ""ToUserId""::uuid;
+ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
+ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""SuggestedUserId"" TYPE uuid USING ""SuggestedUserId""::uuid;
+ALTER TABLE ""Messages"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
+ALTER TABLE ""Messages"" ALTER COLUMN ""FromUserId"" TYPE uuid USING ""FromUserId""::uuid;
+ALTER TABLE ""Messages"" ALTER COLUMN ""ToUserId"" TYPE uuid USING ""ToUserId""::uuid;
+
+-- Recreate foreign key constraints
+ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_FromUserId"" FOREIGN KEY (""FromUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_ToUserId"" FOREIGN KEY (""ToUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""Messages"" ADD CONSTRAINT ""FK_Messages_Users_FromUserId"" FOREIGN KEY (""FromUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""Messages"" ADD CONSTRAINT ""FK_Messages_Users_ToUserId"" FOREIGN KEY (""ToUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""MusicProfiles"" ADD CONSTRAINT ""FK_MusicProfiles_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""UserImages"" ADD CONSTRAINT ""FK_UserImages_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Users_SuggestedUserId"" FOREIGN KEY (""SuggestedUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
+";
+
+        await db.Database.ExecuteSqlRawAsync(sql);
+
+        Console.WriteLine("UUID conversion completed successfully!");
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = "Database UUID types fixed successfully! Please restart your application.",
+            timestamp = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error during UUID conversion: {ex.Message}");
+        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
+        return Results.Problem(
+            detail: ex.Message,
+            title: "Failed to fix UUID types",
+            statusCode: 500
+        );
+    }
+})
+.WithName("FixUuidTypes")
+.WithSummary("⚠️ ADMIN: Fix UUID column types in PostgreSQL")
+.WithDescription("Converts text columns to UUID type. Run this ONCE to fix the schema, then restart the app.");
+
 // Get top tracks from an artist
 app.MapGet("/spotify/artist-top-tracks"!, async (
     SpotifyService spotifyService,
