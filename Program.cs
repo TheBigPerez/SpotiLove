@@ -1733,45 +1733,76 @@ app.MapPost("/auth/login", async (
     AppDbContext db,
     IPasswordHasher<User> hasher) =>
 {
-    // Find user by email
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-    if (user == null)
+    try
     {
-        return Results.BadRequest(new
-        {
-            success = false,
-            message = "Invalid email or password"
-        });
-    }
+        // Load user WITH MusicProfile and Images
+        var user = await db.Users
+            .Include(u => u.MusicProfile)
+            .Include(u => u.Images)
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
 
-    // Verify password
-    var result = hasher.VerifyHashedPassword(user, user.PasswordHash ?? "", request.Password); if (result == PasswordVerificationResult.Failed)
-    {
-        return Results.BadRequest(new
+        if (user == null)
         {
-            success = false,
-            message = "Invalid email or password"
-        });
-    }
-
-    // Generate a fake token for now (replace with JWT later)
-    var token = Guid.NewGuid().ToString();
-
-    return Results.Ok(new
-    {
-        success = true,
-        message = "Login successful",
-        token,
-        user = new
-        {
-            user.Id,
-            user.Name,
-            user.Email,
-            user.Age,
-            user.Gender
+            return Results.BadRequest(new
+            {
+                success = false,
+                message = "Invalid email or password"
+            });
         }
-    });
+
+        // Verify password
+        var result = hasher.VerifyHashedPassword(user, user.PasswordHash ?? "", request.Password);
+        if (result == PasswordVerificationResult.Failed)
+        {
+            return Results.BadRequest(new
+            {
+                success = false,
+                message = "Invalid email or password"
+            });
+        }
+
+        // Update last login
+        user.LastLoginAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var token = Guid.NewGuid().ToString();
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = "Login successful",
+            token,
+            user = new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Age = user.Age,
+                Gender = user.Gender,
+                SexualOrientation = user.SexualOrientation,
+                Bio = user.Bio,
+                Location = user.Location,
+                MusicProfile = user.MusicProfile != null ? new MusicProfileDto
+                {
+                    FavoriteGenres = user.MusicProfile.FavoriteGenres ?? new List<string>(),
+                    FavoriteArtists = user.MusicProfile.FavoriteArtists ?? new List<string>(),
+                    FavoriteSongs = user.MusicProfile.FavoriteSongs ?? new List<string>()
+                } : new MusicProfileDto(),
+                Images = user.Images.Select(i => i.ImageUrl).ToList()
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Login error: {ex.Message}");
+        return Results.Problem(
+            detail: ex.Message,
+            title: "Login failed",
+            statusCode: 500
+        );
+    }
 });
+
 // Chat Endpoints
 app.MapGet("/chats/{userId:guid}/conversations", ChatEndpoints.GetUserConversations)
     .WithName("GetUserConversations")
