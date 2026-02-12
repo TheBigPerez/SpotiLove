@@ -1827,7 +1827,7 @@ app.MapDelete("/chats/message/{messageId:guid}",
 
 // ---- User Management Endpoints ----
 app.MapPost("/users", Endpoints.CreateUser);
-app.MapGet("/users/{id:guid}", Endpoints.GetUser);
+app.MapGet("/users/{id:guid}", PasswordHasher.GetUser);
 app.MapPut("/users/{id:guid}/profile", Endpoints.UpdateProfile);
 app.MapGet("/users:search", Endpoints.SearchUsers);
 
