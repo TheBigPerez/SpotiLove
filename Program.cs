@@ -470,30 +470,26 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             });
         }
 
-        //  Fetch swiped, queued, and total users in parallel
-        var swipedTask = db.Likes
+        //  Fetch swiped users
+        var swipedUserIds = (await db.Likes
             .Where(l => l.FromUserId == currentUserId)
             .AsNoTracking()
             .Select(l => l.ToUserId)
-            .ToListAsync();
+            .ToListAsync())
+            .ToHashSet();
 
-        var queueTask = db.UserSuggestionQueues
+        //  Fetch queue items
+        var queueItems = await db.UserSuggestionQueues
             .Where(q => q.UserId == currentUserId && q.CompatibilityScore >= 50)
             .OrderByDescending(q => q.CompatibilityScore)
             .ThenBy(q => q.QueuePosition)
             .AsNoTracking()
             .ToListAsync();
 
-        var totalUsersTask = db.Users
+        //  Count total available users
+        var totalAvailable = await db.Users
             .Where(u => u.Id != currentUserId && u.MusicProfile != null)
             .CountAsync();
-
-        await Task.WhenAll(swipedTask, queueTask, totalUsersTask);
-
-        var swipedUserIds = swipedTask.Result.ToHashSet();
-        var queueItems = queueTask.Result;
-        var totalAvailable = totalUsersTask.Result;
-
         Console.WriteLine($" User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
 
         //  Refill queue if needed
@@ -680,7 +676,8 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
             "Taylor Swift", "Drake", "Arctic Monkeys", "Beyoncé", "Eminem",
             "Daft Punk", "Bad Bunny", "The Weeknd", "Billie Eilish", "Post Malone",
             "Ed Sheeran", "Ariana Grande", "Bruno Mars", "Adele", "Coldplay",
-            "Imagine Dragons", "Twenty One Pilots", "Kanye West", "Travis Scott", "SZA"
+            "Imagine Dragons", "Twenty One Pilots", "Kanye West", "Travis Scott", "SZA",
+            "Fleetwood Mac", "Red Hot Chili Peppers", "Lana Del Rey", "Migos", "Dua Lipa",
         };
         var songs = new[] {
             "Anti-Hero", "Blinding Lights", "Do I Wanna Know", "One More Time",
