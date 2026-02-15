@@ -660,6 +660,76 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 .WithName("GetUsersForSwipe")
 .WithSummary("Get personalized user suggestions with smart caching")
 .WithDescription("Requires ?userId={id} and optional &count={1–50} for results.");
+
+app.MapPost("/swipe", async (AppDbContext db, LikeDto dto) =>
+{
+    try
+    {
+        if (dto.FromUserId == dto.ToUserId)
+        {
+            return Results.BadRequest(new ResponseMessage
+            {
+                Success = false,
+                Message = "Cannot swipe on yourself"
+            });
+        }
+
+        // Check if already swiped
+        var existingLike = await db.Likes
+            .FirstOrDefaultAsync(l => l.FromUserId == dto.FromUserId && l.ToUserId == dto.ToUserId);
+
+        if (existingLike != null)
+        {
+            return Results.Conflict(new ResponseMessage
+            {
+                Success = false,
+                Message = "Already swiped on this user"
+            });
+        }
+
+        // Create new swipe
+        var like = new Like
+        {
+            FromUserId = dto.FromUserId,
+            ToUserId = dto.ToUserId,
+            IsLike = dto.IsLike,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // Check for mutual match
+        var reverseLike = await db.Likes
+            .FirstOrDefaultAsync(l => l.FromUserId == dto.ToUserId && l.ToUserId == dto.FromUserId && l.IsLike);
+
+        if (reverseLike != null && dto.IsLike)
+        {
+            // It's a match!
+            like.IsMatch = true;
+            reverseLike.IsMatch = true;
+            db.Likes.Update(reverseLike);
+        }
+
+        db.Likes.Add(like);
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new ResponseMessage
+        {
+            Success = true,
+            Message = like.IsMatch ? "It's a match!" : "Swipe recorded"
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Swipe error: {ex.Message}");
+        return Results.Problem(
+            detail: ex.Message,
+            title: "Failed to process swipe",
+            statusCode: 500
+        );
+    }
+})
+.WithName("SwipeOnUser")
+.WithSummary("Swipe on a user (like or pass)");
+
 // Add this endpoint to Program.cs for quick database population
 // Place this AFTER your other endpoints but BEFORE app.Run()
 app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
