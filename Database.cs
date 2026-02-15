@@ -196,6 +196,8 @@ public static class PasswordHasher
         Age = user.Age,
         Location = user.Location ?? "",
         Bio = user.Bio ?? "",
+        Gender = user.Gender,
+        SexualOrientation = user.SexualOrientation,
         MusicProfile = user.MusicProfile != null ? new MusicProfileDto
         {
             FavoriteGenres = user.MusicProfile.FavoriteGenres ?? new List<string>(),
@@ -204,7 +206,6 @@ public static class PasswordHasher
         } : new MusicProfileDto(),
         Images = user.Images.Select(i => i.ImageUrl ?? i.Url).ToList()
     };
-
     private const string Salt = "SpotiLove_Salt";
 
     public static string HashPassword(string password)
