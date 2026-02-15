@@ -500,16 +500,26 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
         {
             int batchSize = Math.Min(50, requestedCount * 3);
 
-            var candidateIds = await db.Users
-                .Where(u => u.Id != currentUserId &&
-                            u.MusicProfile != null &&
-                            !swipedUserIds.Contains(u.Id) &&
-                            !queuedUserIds.Contains(u.Id))
-                .AsNoTracking()
-                .Select(u => u.Id)
-                .Take(batchSize)
-                .ToListAsync();
+            // Build query dynamically to handle empty HashSets
+var candidateQuery = db.Users
+    .Where(u => u.Id != currentUserId && u.MusicProfile != null);
 
+// Only add exclusions if there are items to exclude
+if (swipedUserIds.Any())
+{
+    candidateQuery = candidateQuery.Where(u => !swipedUserIds.Contains(u.Id));
+}
+
+if (queuedUserIds.Any())
+{
+    candidateQuery = candidateQuery.Where(u => !queuedUserIds.Contains(u.Id));
+}
+
+var candidateIds = await candidateQuery
+    .AsNoTracking()
+    .Select(u => u.Id)
+    .Take(batchSize)
+    .ToListAsync();
             if (candidateIds.Any())
             {
                 Console.WriteLine($" Batch processing {candidateIds.Count} new candidates...");
