@@ -501,25 +501,25 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             int batchSize = Math.Min(50, requestedCount * 3);
 
             // Build query dynamically to handle empty HashSets
-var candidateQuery = db.Users
-    .Where(u => u.Id != currentUserId && u.MusicProfile != null);
+            var candidateQuery = db.Users
+                .Where(u => u.Id != currentUserId && u.MusicProfile != null);
 
-// Only add exclusions if there are items to exclude
-if (swipedUserIds.Any())
-{
-    candidateQuery = candidateQuery.Where(u => !swipedUserIds.Contains(u.Id));
-}
+            // Only add exclusions if there are items to exclude
+            if (swipedUserIds.Any())
+            {
+                candidateQuery = candidateQuery.Where(u => !swipedUserIds.Contains(u.Id));
+            }
 
-if (queuedUserIds.Any())
-{
-    candidateQuery = candidateQuery.Where(u => !queuedUserIds.Contains(u.Id));
-}
+            if (queuedUserIds.Any())
+            {
+                candidateQuery = candidateQuery.Where(u => !queuedUserIds.Contains(u.Id));
+            }
 
-var candidateIds = await candidateQuery
-    .AsNoTracking()
-    .Select(u => u.Id)
-    .Take(batchSize)
-    .ToListAsync();
+            var candidateIds = await candidateQuery
+                .AsNoTracking()
+                .Select(u => u.Id)
+                .Take(batchSize)
+                .ToListAsync();
             if (candidateIds.Any())
             {
                 Console.WriteLine($" Batch processing {candidateIds.Count} new candidates...");
@@ -559,15 +559,7 @@ var candidateIds = await candidateQuery
 
                 try
                 {
-                    var existingPairs = await db.UserSuggestionQueues
-                        .Where(q => q.UserId == currentUserId &&
-                                    candidateIds.Contains(q.SuggestedUserId))
-                        .Select(q => q.SuggestedUserId)
-                        .ToListAsync();
-
-                    var newInserts = batchInserts
-                        .Where(b => !existingPairs.Contains(b.SuggestedUserId))
-                        .ToList();
+                    var newInserts = batchInserts; // Just insert everything, DB will handle duplicates
 
                     if (newInserts.Any())
                     {
