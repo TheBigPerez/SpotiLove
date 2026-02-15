@@ -1802,6 +1802,36 @@ app.MapPost("/auth/login", async (
         );
     }
 });
+app.MapGet("/debug/user/{userId:guid}", async (AppDbContext db, Guid userId) =>
+{
+    try
+    {
+        var user = await db.Users.FindAsync(userId);
+
+        if (user == null)
+            return Results.NotFound(new { success = false, message = "User not found" });
+
+        return Results.Ok(new
+        {
+            success = true,
+            user = new
+            {
+                user.Id,
+                user.Name,
+                user.Age,
+                user.Gender,
+                user.SexualOrientation,
+                user.Bio,
+                user.Email
+            },
+            message = "Raw database values"
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(detail: ex.Message);
+    }
+});
 
 // Chat Endpoints
 app.MapGet("/chats/{userId:guid}/conversations", ChatEndpoints.GetUserConversations)
