@@ -264,11 +264,11 @@ public static class PasswordHasher
         if (user == null)
             return Results.NotFound(new ResponseMessage { Success = false, Message = "User not found" });
 
-        // Wrap the DTO in a response object
+        //Return wrapped format that the app expects
         return Results.Ok(new
         {
             success = true,
-            user = ToUserDto(user)
+            user = ToUserDto(user)  // Convert to DTO
         });
     }
     // Updates only the music profile fields.
