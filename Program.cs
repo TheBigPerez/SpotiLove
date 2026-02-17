@@ -479,12 +479,26 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             .ToHashSet();
 
         //  Fetch queue items
+        // Try high compatibility first (>= 50)
         var queueItems = await db.UserSuggestionQueues
             .Where(q => q.UserId == currentUserId && q.CompatibilityScore >= 50)
             .OrderByDescending(q => q.CompatibilityScore)
             .ThenBy(q => q.QueuePosition)
             .AsNoTracking()
             .ToListAsync();
+
+        // If we don't have enough high-score matches, grab anyone else available in the queue
+        if (queueItems.Count < requestedCount)
+        {
+            var additionalItems = await db.UserSuggestionQueues
+                .Where(q => q.UserId == currentUserId && q.CompatibilityScore < 50)
+                .OrderByDescending(q => q.CompatibilityScore)
+                .ThenBy(q => q.QueuePosition)
+                .AsNoTracking()
+                .ToListAsync();
+
+            queueItems.AddRange(additionalItems);
+        }
 
         //  Count total available users
         var totalAvailable = await db.Users
