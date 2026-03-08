@@ -1,31 +1,53 @@
 using Microsoft.EntityFrameworkCore;
 using Spotilove;
+using DotNetEnv;
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
+using System.Text.Json.Serialization;
+using static Spotilove.AppDbContext;
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 
-DotNetEnv.Env.Load();
-
-// ============================================
-// DATABASE CONFIGURATION FOR COOLIFY
-// ============================================
+DotNetEnv.Env.Load(); // load .env file
 
 var builder = WebApplication.CreateBuilder(args);
-DotNetEnv.Env.Load();
-var cs = builder.Configuration.GetConnectionString("PostgresConnection")
-    ?? throw new Exception("PostgresConnection string is not set in configuration");
 
-System.Console.WriteLine(cs);
+// ===========================================================
+// 🧩 DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
+// ===========================================================
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? builder.Configuration.GetValue<string>("ConnectionStrings:Sqlite")
+    ?? "Data Source=spotilove.db";
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-    opt.UseNpgsql(cs);
-    opt.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+    if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
+    {
+        var databaseUri = new Uri(connectionString);
+        var userInfo = databaseUri.UserInfo.Split(':', 2);
+
+        var connStr =
+            $"Host={databaseUri.Host};" +
+            $"Port={databaseUri.Port};" +
+            $"Database={databaseUri.LocalPath.TrimStart('/')};" +
+            $"Username={userInfo[0]};" +
+            $"Password={userInfo[1]};" +
+            $"SSL Mode=Require;" +
+            $"Trust Server Certificate=true";
+
+        opt.UseNpgsql(connStr)
+           .UseSnakeCaseNamingConvention();
+
+        Console.WriteLine("Using PostgreSQL database");
+    }
+    else
+    {
+        opt.UseSqlite(connectionString);
+        Console.WriteLine("Using SQLite database");
+    }
 });
 
 // ===========================================================
-//  API & SERVICES CONFIGURATION
+// 🚀 API & SERVICES CONFIGURATION
 // ===========================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -47,63 +69,20 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-
 app.UseCors("AllowAll");
 
 // ===========================================================
-// DATABASE MIGRATION + SEEDING
+// 🧱 DATABASE MIGRATION + SEEDING
 // ===========================================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    try
-    {
-        Console.WriteLine(" Connecting to Coolify PostgreSQL database...");
-
-        var canConnect = await db.Database.CanConnectAsync();
-        Console.WriteLine($"   Connection status: {(canConnect ? " SUCCESS" : " FAILED")}");
-
-        if (!canConnect)
-        {
-            throw new Exception("Cannot connect to Coolify PostgreSQL - check environment variables");
-        }
-
-        Console.WriteLine(" Applying database migrations...");
-
-        // Get pending migrations
-        var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
-        Console.WriteLine($"   Pending migrations: {pendingMigrations.Count()}");
-
-        foreach (var migration in pendingMigrations)
-        {
-            Console.WriteLine($"   - {migration}");
-        }
-
-        await db.Database.EnsureCreatedAsync();
-        Console.WriteLine(" Migrations completed successfully");
-
-        // Verify tables exist
-        var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-        Console.WriteLine($" Applied migrations: {appliedMigrations.Count()}");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($" Database setup failed: {ex.Message}");
-        Console.WriteLine($"   Type: {ex.GetType().Name}");
-
-        if (ex.InnerException != null)
-        {
-            Console.WriteLine($"   Inner exception: {ex.InnerException.Message}");
-        }
-
-        // Don't throw - let the app start so you can debug
-        Console.WriteLine(" Continuing despite database error - check configuration!");
-    }
+    await db.Database.MigrateAsync();
 }
 
 // ===========================================================
-//                    DEVELOPMENT TOOLS
+// 🧑‍💻 DEVELOPMENT TOOLS
 // ===========================================================
 if (app.Environment.IsDevelopment())
 {
@@ -112,51 +91,33 @@ if (app.Environment.IsDevelopment())
 }
 
 // ===========================================================
-//                 SERVER CONFIGURATION
+// 🌐 SERVER CONFIGURATION
 // ===========================================================
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
-if (!builder.Environment.IsEnvironment("Design"))
-{
-    app.Urls.Add($"http://0.0.0.0:{port}");
-}
+app.Urls.Add($"http://0.0.0.0:{port}");
 
 // ===========================================================
-//   API ENDPOINTS
+// 🌟 API ENDPOINTS
 // ===========================================================
 
-// Health check with database status
-app.MapGet("/", async (AppDbContext db) =>
+// Health check
+app.MapGet("/", () => Results.Ok(new
 {
-    bool dbConnected = false;
-    try
+    message = "Spotilove API is running!",
+    timestamp = DateTime.UtcNow,
+    endpoints = new
     {
-        dbConnected = await db.Database.CanConnectAsync();
+        users = "/users?userId={id}",
+        user_images = "/users/{id}/images",
+        swipe_discover = "/swipe/discover/{userId}",
+        swipe_action = "/swipe",
+        swipe_like = "/swipe/{fromUserId}/like/{toUserId}",
+        swipe_pass = "/swipe/{fromUserId}/pass/{toUserId}",
+        matches = "/matches/{userId}",
+        swipe_stats = "/swipe/stats/{userId}",
+        swagger = "/swagger"
     }
-    catch { }
-
-    return Results.Ok(new
-    {
-        message = "Spotilove API is running!",
-        timestamp = DateTime.UtcNow,
-        database = new
-        {
-            connected = dbConnected,
-            type = "PostgreSQL (Coolify)"
-        },
-        endpoints = new
-        {
-            users = "/users?userId={id}",
-            user_images = "/users/{id}/images",
-            swipe_discover = "/swipe/discover/{userId}",
-            swipe_action = "/swipe",
-            swipe_like = "/swipe/{fromUserId}/like/{toUserId}",
-            swipe_pass = "/swipe/{fromUserId}/pass/{toUserId}",
-            matches = "/matches/{userId}",
-            swipe_stats = "/swipe/stats/{userId}",
-            swagger = "/swagger"
-        }
-    });
-});
+}));
 // Get popular artists for selection
 app.MapGet("/spotify/popular-artists", async (SpotifyService spotifyService, int limit = 20) =>
 {
@@ -167,7 +128,7 @@ app.MapGet("/spotify/popular-artists", async (SpotifyService spotifyService, int
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Error fetching popular artists: {ex.Message}");
+        Console.WriteLine($"❌ Error fetching popular artists: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch popular artists");
     }
 })
@@ -187,7 +148,7 @@ app.MapGet("/spotify/search-artists", async (SpotifyService spotifyService, stri
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Error searching artists: {ex.Message}");
+        Console.WriteLine($"❌ Error searching artists: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to search artists");
     }
 })
@@ -204,7 +165,7 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
             .Take(50) // Get last 20 users
             .ToListAsync();
 
-        Console.WriteLine($" Total users in database: {users.Count}");
+        Console.WriteLine($"📊 Total users in database: {users.Count}");
 
         var result = users.Select(u => new
         {
@@ -234,7 +195,7 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  Error fetching users: {ex.Message}");
+        Console.WriteLine($"❌ Error fetching users: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to fetch users",
@@ -244,84 +205,6 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
 })
 .WithName("DebugAllUsers")
 .WithSummary("Debug: View all users in database");
-
-app.MapPost("/admin/fix-uuid-types", async (AppDbContext db) =>
-{
-    try
-    {
-        Console.WriteLine("Starting UUID and DateTime type conversion...");
-
-        string sql = @"
--- Drop all foreign key constraints
-ALTER TABLE ""Likes"" DROP CONSTRAINT IF EXISTS ""FK_Likes_Users_FromUserId"";
-ALTER TABLE ""Likes"" DROP CONSTRAINT IF EXISTS ""FK_Likes_Users_ToUserId"";
-ALTER TABLE ""Messages"" DROP CONSTRAINT IF EXISTS ""FK_Messages_Users_FromUserId"";
-ALTER TABLE ""Messages"" DROP CONSTRAINT IF EXISTS ""FK_Messages_Users_ToUserId"";
-ALTER TABLE ""MusicProfiles"" DROP CONSTRAINT IF EXISTS ""FK_MusicProfiles_Users_UserId"";
-ALTER TABLE ""UserImages"" DROP CONSTRAINT IF EXISTS ""FK_UserImages_Users_UserId"";
-ALTER TABLE ""UserSuggestionQueues"" DROP CONSTRAINT IF EXISTS ""FK_UserSuggestionQueues_Users_UserId"";
-ALTER TABLE ""UserSuggestionQueues"" DROP CONSTRAINT IF EXISTS ""FK_UserSuggestionQueues_Users_SuggestedUserId"";
-
--- Convert all ID columns to UUID
-ALTER TABLE ""Users"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
-ALTER TABLE ""MusicProfiles"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
-ALTER TABLE ""MusicProfiles"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
-ALTER TABLE ""UserImages"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
-ALTER TABLE ""UserImages"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
-ALTER TABLE ""Likes"" ALTER COLUMN ""FromUserId"" TYPE uuid USING ""FromUserId""::uuid;
-ALTER TABLE ""Likes"" ALTER COLUMN ""ToUserId"" TYPE uuid USING ""ToUserId""::uuid;
-ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""UserId"" TYPE uuid USING ""UserId""::uuid;
-ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""SuggestedUserId"" TYPE uuid USING ""SuggestedUserId""::uuid;
-ALTER TABLE ""Messages"" ALTER COLUMN ""Id"" TYPE uuid USING ""Id""::uuid;
-ALTER TABLE ""Messages"" ALTER COLUMN ""FromUserId"" TYPE uuid USING ""FromUserId""::uuid;
-ALTER TABLE ""Messages"" ALTER COLUMN ""ToUserId"" TYPE uuid USING ""ToUserId""::uuid;
-
--- Convert all DateTime columns to timestamp
-ALTER TABLE ""Users"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
-ALTER TABLE ""Users"" ALTER COLUMN ""LastLoginAt"" TYPE timestamp USING ""LastLoginAt""::timestamp;
-ALTER TABLE ""Likes"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
-ALTER TABLE ""UserSuggestionQueues"" ALTER COLUMN ""CreatedAt"" TYPE timestamp USING ""CreatedAt""::timestamp;
-ALTER TABLE ""Messages"" ALTER COLUMN ""SentAt"" TYPE timestamp USING ""SentAt""::timestamp;
-ALTER TABLE ""Messages"" ALTER COLUMN ""ReadAt"" TYPE timestamp USING ""ReadAt""::timestamp;
-
--- Recreate foreign key constraints
-ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_FromUserId"" FOREIGN KEY (""FromUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""Likes"" ADD CONSTRAINT ""FK_Likes_Users_ToUserId"" FOREIGN KEY (""ToUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""Messages"" ADD CONSTRAINT ""FK_Messages_Users_FromUserId"" FOREIGN KEY (""FromUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""Messages"" ADD CONSTRAINT ""FK_Messages_Users_ToUserId"" FOREIGN KEY (""ToUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""MusicProfiles"" ADD CONSTRAINT ""FK_MusicProfiles_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""UserImages"" ADD CONSTRAINT ""FK_UserImages_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Users_UserId"" FOREIGN KEY (""UserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-ALTER TABLE ""UserSuggestionQueues"" ADD CONSTRAINT ""FK_UserSuggestionQueues_Users_SuggestedUserId"" FOREIGN KEY (""SuggestedUserId"") REFERENCES ""Users""(""Id"") ON DELETE CASCADE;
-";
-
-        await db.Database.ExecuteSqlRawAsync(sql);
-
-        Console.WriteLine("UUID and DateTime conversion completed successfully!");
-
-        return Results.Ok(new
-        {
-            success = true,
-            message = "Database UUID and DateTime types fixed successfully! Please restart your application.",
-            timestamp = DateTime.UtcNow
-        });
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error during UUID conversion: {ex.Message}");
-        Console.WriteLine($"Stack trace: {ex.StackTrace}");
-
-        return Results.Problem(
-            detail: ex.Message,
-            title: "Failed to fix UUID types",
-            statusCode: 500
-        );
-    }
-})
-.WithName("FixDatabaseTypes")
-.WithSummary("ADMIN: Fix UUID and DateTime column types in PostgreSQL")
-.WithDescription("Converts text columns to UUID and timestamp types. Run this ONCE to fix the schema, then restart the app.");
-
 // Get top tracks from an artist
 app.MapGet("/spotify/artist-top-tracks"!, async (
     SpotifyService spotifyService,
@@ -333,10 +216,10 @@ app.MapGet("/spotify/artist-top-tracks"!, async (
         if (string.IsNullOrWhiteSpace(artistName))
             return Results.BadRequest(new { success = false, message = "Artist name is required" });
 
-        Console.WriteLine($" Fetching tracks for artist: {artistName}");
+        Console.WriteLine($"🎵 Fetching tracks for artist: {artistName}");
         var tracks = await spotifyService.GetArtistTopTracksAsync(artistName, limit);
 
-        Console.WriteLine($"  Found {tracks.Count} tracks");
+        Console.WriteLine($"✅ Found {tracks.Count} tracks");
         foreach (var track in tracks)
         {
             Console.WriteLine($"   - {track.Title} | Preview: {(track.PreviewUrl != null ? "✓" : "✗")}");
@@ -346,7 +229,7 @@ app.MapGet("/spotify/artist-top-tracks"!, async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  Error fetching artist tracks: {ex.Message}");
+        Console.WriteLine($"❌ Error fetching artist tracks: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch artist tracks");
     }
 })
@@ -368,7 +251,7 @@ app.MapGet("/spotify/genres-from-artists", async (SpotifyService spotifyService,
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  Error fetching genres: {ex.Message}");
+        Console.WriteLine($"❌ Error fetching genres: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch genres");
     }
 })
@@ -429,7 +312,7 @@ app.MapPost("/users/{userId:guid}/profile", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"  Error updating music profile: {ex.Message}");
+        Console.WriteLine($"❌ Error updating music profile: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to update music profile");
     }
 });
@@ -437,7 +320,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 {
     try
     {
-        //   Validate required userId
+        // ✅ Validate required userId
         if (userId == null || userId == Guid.Empty)
         {
             return Results.BadRequest(new TakeExUsersResponse
@@ -452,7 +335,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
         Guid currentUserId = userId.Value;
         int requestedCount = Math.Clamp(count ?? 10, 1, 50);
 
-        //  Load current user + profile
+        // 1️⃣ Load current user + profile
         var currentUser = await db.Users
              .Include(u => u.MusicProfile)
              .AsNoTracking()
@@ -470,43 +353,33 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             });
         }
 
-        //  Fetch swiped users
-        var swipedUserIds = (await db.Likes
+        // 2️⃣ Fetch swiped, queued, and total users in parallel
+        var swipedTask = db.Likes
             .Where(l => l.FromUserId == currentUserId)
             .AsNoTracking()
             .Select(l => l.ToUserId)
-            .ToListAsync())
-            .ToHashSet();
+            .ToListAsync();
 
-        //  Fetch queue items
-        // Try high compatibility first (>= 50)
-        var queueItems = await db.UserSuggestionQueues
+        var queueTask = db.UserSuggestionQueues
             .Where(q => q.UserId == currentUserId && q.CompatibilityScore >= 50)
             .OrderByDescending(q => q.CompatibilityScore)
             .ThenBy(q => q.QueuePosition)
             .AsNoTracking()
             .ToListAsync();
 
-        // If we don't have enough high-score matches, grab anyone else available in the queue
-        if (queueItems.Count < requestedCount)
-        {
-            var additionalItems = await db.UserSuggestionQueues
-                .Where(q => q.UserId == currentUserId && q.CompatibilityScore < 50)
-                .OrderByDescending(q => q.CompatibilityScore)
-                .ThenBy(q => q.QueuePosition)
-                .AsNoTracking()
-                .ToListAsync();
-
-            queueItems.AddRange(additionalItems);
-        }
-
-        //  Count total available users
-        var totalAvailable = await db.Users
+        var totalUsersTask = db.Users
             .Where(u => u.Id != currentUserId && u.MusicProfile != null)
             .CountAsync();
-        Console.WriteLine($" User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
 
-        //  Refill queue if needed
+        await Task.WhenAll(swipedTask, queueTask, totalUsersTask);
+
+        var swipedUserIds = swipedTask.Result.ToHashSet();
+        var queueItems = queueTask.Result;
+        var totalAvailable = totalUsersTask.Result;
+
+        Console.WriteLine($"📊 User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
+
+        // 3️⃣ Refill queue if needed
         var queuedUserIds = queueItems.Select(q => q.SuggestedUserId).ToHashSet();
         bool needsQueueRefill = queueItems.Count < requestedCount * 2;
 
@@ -514,29 +387,19 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
         {
             int batchSize = Math.Min(50, requestedCount * 3);
 
-            // Build query dynamically to handle empty HashSets
-            var candidateQuery = db.Users
-                .Where(u => u.Id != currentUserId && u.MusicProfile != null);
-
-            // Only add exclusions if there are items to exclude
-            if (swipedUserIds.Any())
-            {
-                candidateQuery = candidateQuery.Where(u => !swipedUserIds.Contains(u.Id));
-            }
-
-            if (queuedUserIds.Any())
-            {
-                candidateQuery = candidateQuery.Where(u => !queuedUserIds.Contains(u.Id));
-            }
-
-            var candidateIds = await candidateQuery
+            var candidateIds = await db.Users
+                .Where(u => u.Id != currentUserId &&
+                            u.MusicProfile != null &&
+                            !swipedUserIds.Contains(u.Id) &&
+                            !queuedUserIds.Contains(u.Id))
                 .AsNoTracking()
                 .Select(u => u.Id)
                 .Take(batchSize)
                 .ToListAsync();
+
             if (candidateIds.Any())
             {
-                Console.WriteLine($" Batch processing {candidateIds.Count} new candidates...");
+                Console.WriteLine($"🔄 Batch processing {candidateIds.Count} new candidates...");
 
                 var candidates = await db.Users
                     .Include(u => u.MusicProfile)
@@ -573,13 +436,21 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 
                 try
                 {
-                    var newInserts = batchInserts; // Just insert everything, DB will handle duplicates
+                    var existingPairs = await db.UserSuggestionQueues
+                        .Where(q => q.UserId == currentUserId &&
+                                    candidateIds.Contains(q.SuggestedUserId))
+                        .Select(q => q.SuggestedUserId)
+                        .ToListAsync();
+
+                    var newInserts = batchInserts
+                        .Where(b => !existingPairs.Contains(b.SuggestedUserId))
+                        .ToList();
 
                     if (newInserts.Any())
                     {
                         db.UserSuggestionQueues.AddRange(newInserts);
                         await db.SaveChangesAsync();
-                        Console.WriteLine($" Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
+                        Console.WriteLine($"✅ Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
 
                         queueItems.AddRange(newInserts);
                         queueItems = queueItems
@@ -602,17 +473,17 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
                     }
                     else
                     {
-                        Console.WriteLine(" All candidates already existed in queue, skipping insert.");
+                        Console.WriteLine("⚠️ All candidates already existed in queue, skipping insert.");
                     }
                 }
                 catch (DbUpdateException ex)
                 {
-                    Console.WriteLine($" Batch insert conflict: {ex.InnerException?.Message}");
+                    Console.WriteLine($"⚠️ Batch insert conflict: {ex.InnerException?.Message}");
                 }
             }
         }
 
-        //  Return top suggestions
+        // 4️⃣ Return top suggestions
         var topSuggestionIds = queueItems
             .Take(requestedCount)
             .Select(q => q.SuggestedUserId)
@@ -629,7 +500,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             });
         }
 
-        //  Fetch user details and FILTER users without MusicProfile
+        // 5️⃣ Fetch user details and FILTER users without MusicProfile
         var users = await db.Users
             .Include(u => u.MusicProfile)
             .Include(u => u.Images)
@@ -637,12 +508,12 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             .AsNoTracking()
             .ToListAsync();
 
-        //  FIX: Filter out users without MusicProfile before mapping
+        // ✅ FIX: Filter out users without MusicProfile before mapping
         var validUsers = users.Where(u => u.MusicProfile != null).ToList();
 
         if (validUsers.Count < users.Count)
         {
-            Console.WriteLine($" Filtered out {users.Count - validUsers.Count} users without MusicProfile");
+            Console.WriteLine($"⚠️ Filtered out {users.Count - validUsers.Count} users without MusicProfile");
         }
 
         var userDict = validUsers.ToDictionary(u => u.Id);
@@ -663,7 +534,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Error in /users: {ex.Message}\n{ex.StackTrace}");
+        Console.WriteLine($"❌ Error in /users: {ex.Message}\n{ex.StackTrace}");
         return Results.Ok(new TakeExUsersResponse
         {
             Success = false,
@@ -676,83 +547,13 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 .WithName("GetUsersForSwipe")
 .WithSummary("Get personalized user suggestions with smart caching")
 .WithDescription("Requires ?userId={id} and optional &count={1–50} for results.");
-
-app.MapPost("/swipe", async (AppDbContext db, LikeDto dto) =>
-{
-    try
-    {
-        if (dto.FromUserId == dto.ToUserId)
-        {
-            return Results.BadRequest(new ResponseMessage
-            {
-                Success = false,
-                Message = "Cannot swipe on yourself"
-            });
-        }
-
-        // Check if already swiped
-        var existingLike = await db.Likes
-            .FirstOrDefaultAsync(l => l.FromUserId == dto.FromUserId && l.ToUserId == dto.ToUserId);
-
-        if (existingLike != null)
-        {
-            return Results.Conflict(new ResponseMessage
-            {
-                Success = false,
-                Message = "Already swiped on this user"
-            });
-        }
-
-        // Create new swipe
-        var like = new Like
-        {
-            FromUserId = dto.FromUserId,
-            ToUserId = dto.ToUserId,
-            IsLike = dto.IsLike,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Check for mutual match
-        var reverseLike = await db.Likes
-            .FirstOrDefaultAsync(l => l.FromUserId == dto.ToUserId && l.ToUserId == dto.FromUserId && l.IsLike);
-
-        if (reverseLike != null && dto.IsLike)
-        {
-            // It's a match!
-            like.IsMatch = true;
-            reverseLike.IsMatch = true;
-            db.Likes.Update(reverseLike);
-        }
-
-        db.Likes.Add(like);
-        await db.SaveChangesAsync();
-
-        return Results.Ok(new ResponseMessage
-        {
-            Success = true,
-            Message = like.IsMatch ? "It's a match!" : "Swipe recorded"
-        });
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Swipe error: {ex.Message}");
-        return Results.Problem(
-            detail: ex.Message,
-            title: "Failed to process swipe",
-            statusCode: 500
-        );
-    }
-})
-.WithName("SwipeOnUser")
-.WithSummary("Swipe on a user (like or pass)");
-
 // Add this endpoint to Program.cs for quick database population
 // Place this AFTER your other endpoints but BEFORE app.Run()
 app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
 {
     try
     {
-        Console.WriteLine($" Creating {count} temporary users...");
+        Console.WriteLine($"🚀 Creating {count} temporary users...");
 
         var random = new Random();
         var names = new[] { "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn", "Sam", "Drew" };
@@ -762,8 +563,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
             "Taylor Swift", "Drake", "Arctic Monkeys", "Beyoncé", "Eminem",
             "Daft Punk", "Bad Bunny", "The Weeknd", "Billie Eilish", "Post Malone",
             "Ed Sheeran", "Ariana Grande", "Bruno Mars", "Adele", "Coldplay",
-            "Imagine Dragons", "Twenty One Pilots", "Kanye West", "Travis Scott", "SZA",
-            "Fleetwood Mac", "Red Hot Chili Peppers", "Lana Del Rey", "Migos", "Dua Lipa",
+            "Imagine Dragons", "Twenty One Pilots", "Kanye West", "Travis Scott", "SZA"
         };
         var songs = new[] {
             "Anti-Hero", "Blinding Lights", "Do I Wanna Know", "One More Time",
@@ -777,7 +577,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
             "Tel Aviv, IL", "Tokyo, JP", "Sydney, AU", "Toronto, CA", "Barcelona, ES"
         };
         var bios = new[] {
-            "Music is my life ",
+            "Music is my life 🎵",
             "Looking for someone who shares my taste in music",
             "Concert buddy wanted!",
             "Vinyl collector and coffee enthusiast ☕",
@@ -871,7 +671,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Error creating users: {ex.Message}\n{ex.StackTrace}");
+        Console.WriteLine($"❌ Error creating users: {ex.Message}\n{ex.StackTrace}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to create users",
@@ -912,7 +712,7 @@ app.MapDelete("/dev/clear-users", async (AppDbContext db) =>
     }
 })
 .WithName("ClearAllUsers")
-.WithSummary(" DELETE all users (Development only)")
+.WithSummary("⚠️ DELETE all users (Development only)")
 .WithDescription("Removes ALL users and related data from database. Use with extreme caution!");
 // ---- Music Profile ----
 app.MapPost("/users/{id:guid}/music-profile", async (AppDbContext db, Guid id, MusicProfileDto dto) =>
@@ -1048,7 +848,7 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var cs = Environment.GetEnvironmentVariable("DatabaseURL")
+        var cs = Environment.GetEnvironmentVariable("DATABASE_URL")
                  ?? "Data Source=spotilove.db";
 
         if (cs.StartsWith("postgres://") || cs.StartsWith("postgresql://"))
@@ -1132,20 +932,20 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
         Console.WriteLine($"Background update error: {ex.Message}\n{ex.StackTrace}");
     }
 }
+
 static string BuildNpgsqlConnectionString(string databaseUrl)
 {
     var uri = new Uri(databaseUrl);
-    var userInfo = uri.UserInfo.Split(':');
+    var userInfo = uri.UserInfo.Split(':', 2);
 
-    return new NpgsqlConnectionStringBuilder
+    return new Npgsql.NpgsqlConnectionStringBuilder
     {
         Host = uri.Host,
-        Port = uri.Port > 0 ? uri.Port : 5432,
+        Port = uri.Port,
         Username = userInfo[0],
-        Password = userInfo[2],
-        Database = uri.AbsolutePath.TrimStart('/').Split('?')[0],
-        SslMode = SslMode.Require,
-        TrustServerCertificate = true
+        Password = userInfo[1],
+        Database = uri.AbsolutePath.TrimStart('/'),
+        SslMode = Npgsql.SslMode.Require,
     }.ConnectionString;
 }
 //==========EndPoints=========
@@ -1156,106 +956,46 @@ app.MapGet("/callback", async (
     AppDbContext db,
     IPasswordHasher<User> hasher) =>
 {
-    foreach (var keyValue in req.Query)
-    {
-        Console.WriteLine($" Query Param: {keyValue.Key} = {keyValue.Value}");
-    }
     try
     {
-        Console.WriteLine("=== CALLBACK DEBUG START ===");
-        Console.WriteLine($"Full URL: {req.Scheme}://{req.Host}{req.Path}{req.QueryString}");
-        Console.WriteLine($"Query String: {req.QueryString}");
-        Console.WriteLine($"Method: {req.Method}");
-        Console.WriteLine("Headers:");
-        foreach (var header in req.Headers)
-        {
-            Console.WriteLine($"  {header.Key}: {header.Value}");
-        }
-        Console.WriteLine("Query Parameters:");
-        foreach (var param in req.Query)
-        {
-            Console.WriteLine($"  {param.Key} = {param.Value}");
-        }
-        Console.WriteLine("=== CALLBACK DEBUG END ===");
-
         var code = req.Query["code"].ToString();
         var error = req.Query["error"].ToString();
 
-        Console.WriteLine($" Parsed - Code: {code}, Error: {error}");
+        Console.WriteLine($"🔐 Callback received - Code present: {!string.IsNullOrEmpty(code)}, Error: {error}");
 
         if (!string.IsNullOrEmpty(error))
         {
-            Console.WriteLine($" Spotify authorization declined: {error}");
-            return Results.Redirect("spotilove://auth/error?message=Authorization declined");
+            Console.WriteLine($"❌ Spotify authorization declined: {error}");
+            var errorRedirect = "spotilove://auth/error?message=Authorization declined";
+            return Results.Redirect(errorRedirect);
         }
 
         if (string.IsNullOrEmpty(code))
         {
-            Console.WriteLine(" Missing authorization code - stopping redirect loop");
-
-            var errorHtml = @"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <title>SpotiLove - Error</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: #191414;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            color: white;
-        }
-        .container {
-            text-align: center;
-            padding: 40px;
-            background: rgba(255,0,0,0.1);
-            border-radius: 20px;
-            max-width: 500px;
-        }
-        h1 { color: #ff4444; }
-        pre { 
-            background: rgba(0,0,0,0.5); 
-            padding: 15px; 
-            border-radius: 8px;
-            text-align: left;
-            overflow-x: auto;
-        }
-        a { color: #1db954; text-decoration: none; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <h1> Authentication Error</h1>
-        <p>Missing authorization code from Spotify</p>
-        <pre>URL: " + req.Scheme + "://" + req.Host + req.Path + req.QueryString + @"</pre>
-        <p><a href='spotilove://auth/error?message=Missing+authorization+code'>Return to App</a></p>
-        <p><small>Check server logs for details</small></p>
-    </div>
-</body>
-</html>";
-            return Results.Content(errorHtml, "text/html");
+            Console.WriteLine("❌ Missing authorization code");
+            var errorRedirect = "spotilove://auth/error?message=Missing authorization code";
+            return Results.Redirect(errorRedirect);
         }
 
-        Console.WriteLine(" Valid callback code received");
+        Console.WriteLine("✅ Valid callback code received");
 
+        // Connect to Spotify
         await spotify.ConnectUserAsync(code);
-        Console.WriteLine(" Connected to Spotify API");
+        Console.WriteLine("✅ Connected to Spotify API");
 
+        // Fetch user profile
         var spotifyProfile = await spotify.GetUserProfileAsync();
 
         if (spotifyProfile == null || string.IsNullOrEmpty(spotifyProfile.Email))
         {
-            Console.WriteLine(" Failed to fetch Spotify profile");
-            return Results.Redirect("spotilove://auth/error?message=Unable to fetch email from Spotify");
+            Console.WriteLine("❌ Failed to fetch Spotify profile");
+            var errorRedirect = "spotilove://auth/error?message=Unable to fetch email from Spotify";
+            return Results.Redirect(errorRedirect);
         }
 
-        Console.WriteLine($" Spotify email: {spotifyProfile.Email}");
+        Console.WriteLine($"📧 Spotify email: {spotifyProfile.Email}");
 
+        // Check for existing user
         var existingUser = await db.Users
             .Include(u => u.MusicProfile)
             .FirstOrDefaultAsync(u => u.Email == spotifyProfile.Email);
@@ -1265,18 +1005,12 @@ app.MapGet("/callback", async (
 
         if (existingUser == null)
         {
+            // NEW USER - Create account
             isNewUser = true;
-            Console.WriteLine($" Creating new user for: {spotifyProfile.Email}");
+            Console.WriteLine($"👤 Creating new user for: {spotifyProfile.Email}");
 
             var randomPassword = Guid.NewGuid().ToString();
             var hashedPassword = hasher.HashPassword(null!, randomPassword);
-
-            Console.WriteLine(" Fetching Spotify music data...");
-            var topSongs = await spotify.GetUserTopSongsAsync(10);
-            var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
-            var topGenres = await spotify.GetUserTopGenresAsync(20);
-
-            Console.WriteLine($" Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
 
             user = new User
             {
@@ -1286,91 +1020,98 @@ app.MapGet("/callback", async (
                 Age = 0,
                 Gender = "",
                 SexualOrientation = null,
-                Bio = null,
-                Location = null,
                 CreatedAt = DateTime.UtcNow,
-                LastLoginAt = DateTime.UtcNow,
                 MusicProfile = new MusicProfile
                 {
-                    FavoriteGenres = topGenres.Select(g => g.Trim()).ToList(),
-                    FavoriteArtists = topArtists.Select(a => a.Name.Trim()).ToList(),
-                    FavoriteSongs = topSongs.Select(s => s.Trim()).ToList()
+                    FavoriteGenres = new List<string>(),
+                    FavoriteArtists = new List<string>(),
+                    FavoriteSongs = new List<string>()
                 }
             };
 
             db.Users.Add(user);
             await db.SaveChangesAsync();
 
-            Console.WriteLine($" New user created with music profile: {user.Email} (ID: {user.Id})");
+            Console.WriteLine($"✅ New user created: {user.Email} (ID: {user.Id})");
         }
         else
         {
+            // EXISTING USER - Update login time
             user = existingUser;
             user.LastLoginAt = DateTime.UtcNow;
-            db.Users.Update(user);
-            Console.WriteLine($" Existing user login: {user.Email}");
+            await db.SaveChangesAsync();
 
+            Console.WriteLine($"✅ Existing user logged in: {user.Email} (ID: {user.Id})");
+        }
+
+        // Generate auth token
+        var token = Guid.NewGuid().ToString();
+
+        // Get connection string for background task
+        var connectionString = db.Database.GetConnectionString();
+        var userId = user.Id;
+
+        // Build deep link
+        var deepLinkUrl = $"spotilove://auth/success?token={Uri.EscapeDataString(token)}&userId={user.Id}&isNewUser={isNewUser}&name={Uri.EscapeDataString(user.Name ?? "User")}";
+
+        Console.WriteLine($"🔗 Redirecting to app: {deepLinkUrl}");
+
+        // Start background music sync (don't await)
+        _ = Task.Run(async () =>
+        {
             try
             {
-                Console.WriteLine(" Attempting to update music profile with fresh Spotify data...");
+                await Task.Delay(1000); // Wait for main request to complete
+
+                Console.WriteLine($"🎵 Starting background music sync for user {userId}");
 
                 var topSongs = await spotify.GetUserTopSongsAsync(10);
                 var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
                 var topGenres = await spotify.GetUserTopGenresAsync(20);
 
-                Console.WriteLine($" Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
+                Console.WriteLine($"🎵 Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
 
-                if (user.MusicProfile == null)
+                // Create new DbContext for background task
+                var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+
+                if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
                 {
-                    Console.WriteLine(" Creating new music profile for existing user");
-                    user.MusicProfile = new MusicProfile
-                    {
-                        UserId = user.Id,
-                        FavoriteGenres = topGenres.Select(g => g.Trim()).ToList(),
-                        FavoriteArtists = topArtists.Select(a => a.Name.Trim()).ToList(),
-                        FavoriteSongs = topSongs.Select(s => s.Trim()).ToList()
-                    };
-                    db.MusicProfiles.Add(user.MusicProfile);
+                    var uri = new Uri(connectionString);
+                    var userInfo = uri.UserInfo.Split(':', 2);
+
+                    var connStr = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+
+                    optionsBuilder.UseNpgsql(connStr).UseSnakeCaseNamingConvention();
                 }
                 else
                 {
-                    Console.WriteLine(" Updating existing music profile");
-                    user.MusicProfile.FavoriteGenres.Clear();
-                    user.MusicProfile.FavoriteGenres.AddRange(topGenres.Select(g => g.Trim()));
-
-                    user.MusicProfile.FavoriteArtists.Clear();
-                    user.MusicProfile.FavoriteArtists.AddRange(topArtists.Select(a => a.Name.Trim()));
-
-                    user.MusicProfile.FavoriteSongs.Clear();
-                    user.MusicProfile.FavoriteSongs.AddRange(topSongs.Select(s => s.Trim()));
-
-                    db.Entry(user.MusicProfile).State = EntityState.Modified;
+                    optionsBuilder.UseSqlite(connectionString);
                 }
 
-                Console.WriteLine($" Music profile updated successfully");
-            }
-            catch (Exception spotifyEx)
-            {
-                Console.WriteLine($"Failed to update music profile: {spotifyEx.Message}");
-                Console.WriteLine(" Continuing with existing music profile");
+                using var bgDb = new AppDbContext(optionsBuilder.Options);
 
-                if (user.MusicProfile == null)
+                var bgUser = await bgDb.Users
+                    .Include(u => u.MusicProfile)
+                    .FirstOrDefaultAsync(u => u.Id == userId);
+
+                if (bgUser?.MusicProfile != null)
                 {
-                    Console.WriteLine("User has no music profile - will complete it manually");
+                    bgUser.MusicProfile.FavoriteGenres = topGenres.Select(g => g.Trim()).ToList();
+                    bgUser.MusicProfile.FavoriteArtists = topArtists.Select(a => a.Name.Trim()).ToList();
+                    bgUser.MusicProfile.FavoriteSongs = topSongs.Select(s => s.Trim()).ToList();
+
+                    await bgDb.SaveChangesAsync();
+
+                    Console.WriteLine($"✅ Music profile updated successfully");
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Background music sync failed: {ex.Message}");
+            }
+        });
 
-            await db.SaveChangesAsync();
-            Console.WriteLine($" User saved: {user.Email}");
-        }
-
-        var token = Guid.NewGuid().ToString();
-
-        var deepLinkUrl = $"spotilove://auth/success?token={Uri.EscapeDataString(token)}&userId={user.Id}&isNewUser={isNewUser}&name={Uri.EscapeDataString(user.Name ?? "User")}";
-
-        Console.WriteLine($" Redirecting to app: {deepLinkUrl}");
-
-        //Enhanced HTML with BOTH automatic redirect AND manual button
+        // Return HTML redirect page
         var html = $@"
 <!DOCTYPE html>
 <html>
@@ -1412,7 +1153,7 @@ app.MapGet("/callback", async (
         h1 {{ margin: 0 0 10px; font-size: 28px; }}
         p {{ margin: 10px 0; opacity: 0.9; }}
         .manual-link {{
-            margin-top: 30px;
+            margin-top: 20px;
             padding: 15px 30px;
             background: #1db954;
             color: white;
@@ -1420,15 +1161,6 @@ app.MapGet("/callback", async (
             border-radius: 25px;
             display: inline-block;
             font-weight: bold;
-            font-size: 16px;
-        }}
-        .manual-link:hover {{
-            background: #1ed760;
-        }}
-        #countdown {{
-            font-size: 12px;
-            opacity: 0.7;
-            margin-top: 10px;
         }}
     </style>
 </head>
@@ -1436,65 +1168,13 @@ app.MapGet("/callback", async (
     <div class='container'>
         <div class='spinner'></div>
         <h1>✨ {(isNewUser ? "Welcome to SpotiLove!" : "Welcome Back!")}</h1>
-        <p>{(isNewUser ? "Your music profile has been imported!" : "Your music profile has been updated!")}</p>
-        <p style='font-size: 14px; opacity: 0.7;'>Attempting to open SpotiLove app...</p>
-        <div id='countdown'>Redirecting in <span id='timer'>3</span> seconds</div>
-        
-        <!-- MANUAL BUTTON - appears after countdown -->
-        <div id='manualButton' style='display: none;'>
-            <p style='font-size: 14px; margin-top: 30px;'>App didn't open automatically?</p>
-            <a href='{deepLinkUrl}' class='manual-link' onclick='attemptRedirect()'>
-                📱 Open SpotiLove App
-            </a>
-        </div>
+        <p>Redirecting you back to the app...</p>
+        <p style='font-size: 14px; opacity: 0.7;'>If you're not redirected automatically, click below:</p>
+        <a href='{deepLinkUrl}' class='manual-link'>Open SpotiLove</a>
     </div>
-    
     <script>
-        const deepLink = '{deepLinkUrl}';
-        let countdown = 3;
-        
-        // Countdown timer
-        const countdownInterval = setInterval(() => {{
-            countdown--;
-            document.getElementById('timer').textContent = countdown;
-            
-            if (countdown <= 0) {{
-                clearInterval(countdownInterval);
-                document.getElementById('countdown').style.display = 'none';
-            }}
-        }}, 1000);
-        
-        // Attempt automatic redirect
-        function attemptRedirect() {{
-            console.log('Attempting to open:', deepLink);
-            
-            // Try multiple methods to open the deep link
-            
-            // Method 1: Direct window.location
-            window.location.href = deepLink;
-            
-            // Method 2: Create hidden iframe (works on some Android browsers)
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = deepLink;
-            document.body.appendChild(iframe);
-            
-            // Method 3: Create temporary link and click it
-            const link = document.createElement('a');
-            link.href = deepLink;
-            link.click();
-            
-            return false;
-        }}
-        
-        // Initial automatic redirect attempt
         setTimeout(() => {{
-            attemptRedirect();
-            
-            // Show manual button after 3 seconds
-            setTimeout(() => {{
-                document.getElementById('manualButton').style.display = 'block';
-            }}, 3000);
+            window.location.href = '{deepLinkUrl}';
         }}, 1500);
     </script>
 </body>
@@ -1504,7 +1184,7 @@ app.MapGet("/callback", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Callback error: {ex.Message}");
+        Console.WriteLine($"❌ Callback error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
 
         var errorDeepLink = $"spotilove://auth/error?message={Uri.EscapeDataString(ex.Message)}";
@@ -1534,23 +1214,14 @@ app.MapGet("/callback", async (
             max-width: 400px;
         }}
         h1 {{ color: #ff4444; }}
-        a {{ 
-            color: white;
-            background: #1db954;
-            padding: 12px 24px;
-            border-radius: 20px;
-            text-decoration: none;
-            font-weight: bold;
-            display: inline-block;
-            margin-top: 20px;
-        }}
+        a {{ color: #1db954; text-decoration: none; font-weight: bold; }}
     </style>
 </head>
 <body>
     <div class='container'>
-        <h1> Authentication Failed</h1>
+        <h1>❌ Authentication Failed</h1>
         <p>{ex.Message}</p>
-        <a href='{errorDeepLink}'>Return to App</a>
+        <p><a href='{errorDeepLink}'>Return to App</a></p>
     </div>
 </body>
 </html>";
@@ -1560,7 +1231,7 @@ app.MapGet("/callback", async (
 })
 .WithName("SpotifyCallback")
 .WithSummary("Handles Spotify OAuth callback")
-.WithDescription("Processes Spotify authorization code and creates/logs in user with music profile");
+.WithDescription("Processes Spotify authorization code and creates/logs in user");
 
 app.MapGet("/login/test", () =>
 {
@@ -1618,7 +1289,7 @@ app.MapPut("/users/{userId:guid}/basic-profile", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Error updating basic profile: {ex.Message}");
+        Console.WriteLine($"❌ Error updating basic profile: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to update profile",
@@ -1634,7 +1305,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
 {
     try
     {
-        Console.WriteLine($" Taking {count} random users from DB...");
+        Console.WriteLine($"🎯 Taking {count} random users from DB...");
 
         // Fetch all users first (or a large batch if your DB grows big)
         var allUsers = await db.Users
@@ -1644,7 +1315,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
 
         if (allUsers.Count == 0)
         {
-            Console.WriteLine(" No users found in DB");
+            Console.WriteLine("⚠️ No users found in DB");
             return Results.NotFound(new { success = false, message = "No users found in database" });
         }
 
@@ -1652,7 +1323,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
         var random = new Random();
         var users = allUsers.OrderBy(_ => random.Next()).Take(count).ToList();
 
-        Console.WriteLine($" Retrieved {users.Count} random users");
+        Console.WriteLine($"✅ Retrieved {users.Count} random users");
 
         return Results.Ok(new
         {
@@ -1678,7 +1349,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Failed to take users: {ex.Message}");
+        Console.WriteLine($"❌ Failed to take users: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to take users",
@@ -1695,12 +1366,12 @@ app.MapGet("/login", (SpotifyService spotify) =>
     try
     {
         var loginUrl = spotify.GetLoginUrl();
-        Console.WriteLine($" Redirecting to Spotify: {loginUrl}");
+        Console.WriteLine($"🔗 Redirecting to Spotify: {loginUrl}");
         return Results.Redirect(loginUrl);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Login error: {ex.Message}");
+        Console.WriteLine($"❌ Login error: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to initiate Spotify login",
@@ -1719,18 +1390,18 @@ app.MapPost("/auth/register", async (
 {
     try
     {
-        Console.WriteLine($" Registration attempt for email: {request.Email}");
+        Console.WriteLine($"📝 Registration attempt for email: {request.Email}");
 
         // Check if email already exists
         if (await db.Users.AnyAsync(u => u.Email == request.Email))
         {
-            Console.WriteLine($" Email already exists: {request.Email}");
+            Console.WriteLine($"❌ Email already exists: {request.Email}");
             return Results.BadRequest(new { success = false, message = "Email already exists" });
         }
 
         // Hash password
         var hashedPassword = hasher.HashPassword(null!, request.Password);
-        Console.WriteLine(" Password hashed successfully");
+        Console.WriteLine("✅ Password hashed successfully");
 
         // Create user with ALL required fields
         var user = new User
@@ -1747,34 +1418,34 @@ app.MapPost("/auth/register", async (
             LastLoginAt = null
         };
 
-        Console.WriteLine($" User object created: {user.Name}");
+        Console.WriteLine($"✅ User object created: {user.Name}");
 
         // Add user to database
         db.Users.Add(user);
 
         // Save changes and get the user ID
         var saveResult = await db.SaveChangesAsync();
-        Console.WriteLine($" SaveChanges returned: {saveResult} changes");
-        Console.WriteLine($" User ID assigned: {user.Id}");
+        Console.WriteLine($"✅ SaveChanges returned: {saveResult} changes");
+        Console.WriteLine($"✅ User ID assigned: {user.Id}");
         if (user.Id == Guid.Empty)
         {
-            Console.WriteLine(" User ID was not assigned properly!");
+            Console.WriteLine("❌ User ID was not assigned properly!");
             return Results.Problem("Failed to create user - ID not assigned");
         }
 
         // Generate token
         var token = Guid.NewGuid().ToString();
-        Console.WriteLine($" Token generated: {token}");
+        Console.WriteLine($"✅ Token generated: {token}");
 
         // Verify user was saved by querying it back
         var savedUser = await db.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
         if (savedUser == null)
         {
-            Console.WriteLine($" User {user.Id} was not found after save!");
+            Console.WriteLine($"❌ User {user.Id} was not found after save!");
             return Results.Problem("User creation failed - could not verify save");
         }
 
-        Console.WriteLine($" User verified in database: {savedUser.Email}");
+        Console.WriteLine($"✅ User verified in database: {savedUser.Email}");
 
         return Results.Ok(new
         {
@@ -1795,12 +1466,12 @@ app.MapPost("/auth/register", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($" Registration error: {ex.Message}");
-        Console.WriteLine($" Stack trace: {ex.StackTrace}");
+        Console.WriteLine($"❌ Registration error: {ex.Message}");
+        Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
 
         if (ex.InnerException != null)
         {
-            Console.WriteLine($" Inner exception: {ex.InnerException.Message}");
+            Console.WriteLine($"❌ Inner exception: {ex.InnerException.Message}");
         }
 
         return Results.Problem(
@@ -1816,106 +1487,45 @@ app.MapPost("/auth/login", async (
     AppDbContext db,
     IPasswordHasher<User> hasher) =>
 {
-    try
+    // Find user by email
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+    if (user == null)
     {
-        // Load user WITH MusicProfile and Images
-        var user = await db.Users
-            .Include(u => u.MusicProfile)
-            .Include(u => u.Images)
-            .FirstOrDefaultAsync(u => u.Email == request.Email);
-
-        if (user == null)
+        return Results.BadRequest(new
         {
-            return Results.BadRequest(new
-            {
-                success = false,
-                message = "Invalid email or password"
-            });
-        }
-
-        // Verify password
-        var result = hasher.VerifyHashedPassword(user, user.PasswordHash ?? "", request.Password);
-        if (result == PasswordVerificationResult.Failed)
-        {
-            return Results.BadRequest(new
-            {
-                success = false,
-                message = "Invalid email or password"
-            });
-        }
-
-        // Update last login
-        user.LastLoginAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-
-        var token = Guid.NewGuid().ToString();
-
-        return Results.Ok(new
-        {
-            success = true,
-            message = "Login successful",
-            token,
-            user = new UserDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Age = user.Age,
-                Gender = user.Gender,
-                SexualOrientation = user.SexualOrientation,
-                Bio = user.Bio,
-                Location = user.Location,
-                MusicProfile = user.MusicProfile != null ? new MusicProfileDto
-                {
-                    FavoriteGenres = user.MusicProfile.FavoriteGenres ?? new List<string>(),
-                    FavoriteArtists = user.MusicProfile.FavoriteArtists ?? new List<string>(),
-                    FavoriteSongs = user.MusicProfile.FavoriteSongs ?? new List<string>()
-                } : new MusicProfileDto(),
-                Images = user.Images.Select(i => i.ImageUrl).ToList()
-            }
+            success = false,
+            message = "Invalid email or password"
         });
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"❌ Login error: {ex.Message}");
-        return Results.Problem(
-            detail: ex.Message,
-            title: "Login failed",
-            statusCode: 500
-        );
-    }
-});
-app.MapGet("/debug/user/{userId:guid}", async (AppDbContext db, Guid userId) =>
-{
-    try
-    {
-        var user = await db.Users.FindAsync(userId);
 
-        if (user == null)
-            return Results.NotFound(new { success = false, message = "User not found" });
-
-        return Results.Ok(new
+    // Verify password
+    var result = hasher.VerifyHashedPassword(user, user.PasswordHash ?? "", request.Password); if (result == PasswordVerificationResult.Failed)
+    {
+        return Results.BadRequest(new
         {
-            success = true,
-            user = new
-            {
-                user.Id,
-                user.Name,
-                user.Age,
-                user.Gender,
-                user.SexualOrientation,
-                user.Bio,
-                user.Email
-            },
-            message = "Raw database values"
+            success = false,
+            message = "Invalid email or password"
         });
     }
-    catch (Exception ex)
-    {
-        return Results.Problem(detail: ex.Message);
-    }
-});
 
+    // Generate a fake token for now (replace with JWT later)
+    var token = Guid.NewGuid().ToString();
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = "Login successful",
+        token,
+        user = new
+        {
+            user.Id,
+            user.Name,
+            user.Email,
+            user.Age,
+            user.Gender
+        }
+    });
+});
 // Chat Endpoints
 app.MapGet("/chats/{userId:guid}/conversations", ChatEndpoints.GetUserConversations)
     .WithName("GetUserConversations")
@@ -1940,7 +1550,7 @@ app.MapDelete("/chats/message/{messageId:guid}",
 
 // ---- User Management Endpoints ----
 app.MapPost("/users", Endpoints.CreateUser);
-app.MapGet("/users/{id:guid}", PasswordHasher.GetUser);
+app.MapGet("/users/{id:guid}", Endpoints.GetUser);
 app.MapPut("/users/{id:guid}/profile", Endpoints.UpdateProfile);
 app.MapGet("/users:search", Endpoints.SearchUsers);
 
@@ -1957,5 +1567,3 @@ app.MapGet("/swipe/stats/{userId:guid}", SwipeEndpoints.GetSwipeStats);
 Console.WriteLine($"📖 View API documentation at: http://localhost:{port}/swagger");
 
 app.Run();
-
-
