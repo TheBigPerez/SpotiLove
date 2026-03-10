@@ -78,7 +78,7 @@ public static class ChatEndpoints
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error getting conversations: {ex.Message}");
+            Console.WriteLine($"  Error getting conversations: {ex.Message}");
             return Results.Problem(
                 detail: ex.Message,
                 title: "Failed to get conversations"
@@ -143,7 +143,7 @@ public static class ChatEndpoints
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error getting messages: {ex.Message}");
+            Console.WriteLine($"  Error getting messages: {ex.Message}");
             return Results.Problem(
                 detail: ex.Message,
                 title: "Failed to get messages"
@@ -217,7 +217,7 @@ public static class ChatEndpoints
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error sending message: {ex.Message}");
+            Console.WriteLine($"  Error sending message: {ex.Message}");
             return Results.Problem(
                 detail: ex.Message,
                 title: "Failed to send message"
@@ -256,7 +256,7 @@ public static class ChatEndpoints
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error marking messages as read: {ex.Message}");
+            Console.WriteLine($"  Error marking messages as read: {ex.Message}");
             return Results.Problem(
                 detail: ex.Message,
                 title: "Failed to mark messages as read"
@@ -295,7 +295,7 @@ public static class ChatEndpoints
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error deleting message: {ex.Message}");
+            Console.WriteLine($"  Error deleting message: {ex.Message}");
             return Results.Problem(
                 detail: ex.Message,
                 title: "Failed to delete message"

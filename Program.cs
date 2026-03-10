@@ -47,7 +47,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 });
 
 // ===========================================================
-// 🚀 API & SERVICES CONFIGURATION
+//   API & SERVICES CONFIGURATION
 // ===========================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -72,7 +72,7 @@ var app = builder.Build();
 app.UseCors("AllowAll");
 
 // ===========================================================
-// 🧱 DATABASE MIGRATION + SEEDING
+//   DATABASE MIGRATION + SEEDING
 // ===========================================================
 using (var scope = app.Services.CreateScope())
 {
@@ -82,7 +82,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ===========================================================
-// 🧑‍💻 DEVELOPMENT TOOLS
+//   DEVELOPMENT TOOLS
 // ===========================================================
 if (app.Environment.IsDevelopment())
 {
@@ -91,13 +91,13 @@ if (app.Environment.IsDevelopment())
 }
 
 // ===========================================================
-// 🌐 SERVER CONFIGURATION
+//   SERVER CONFIGURATION
 // ===========================================================
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
 app.Urls.Add($"http://0.0.0.0:{port}");
 
 // ===========================================================
-// 🌟 API ENDPOINTS
+//   API ENDPOINTS
 // ===========================================================
 
 // Health check
@@ -128,7 +128,7 @@ app.MapGet("/spotify/popular-artists", async (SpotifyService spotifyService, int
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error fetching popular artists: {ex.Message}");
+        Console.WriteLine($"  Error fetching popular artists: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch popular artists");
     }
 })
@@ -148,7 +148,7 @@ app.MapGet("/spotify/search-artists", async (SpotifyService spotifyService, stri
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error searching artists: {ex.Message}");
+        Console.WriteLine($"  Error searching artists: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to search artists");
     }
 })
@@ -165,7 +165,7 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
             .Take(50) // Get last 20 users
             .ToListAsync();
 
-        Console.WriteLine($"📊 Total users in database: {users.Count}");
+        Console.WriteLine($"  Total users in database: {users.Count}");
 
         var result = users.Select(u => new
         {
@@ -195,7 +195,7 @@ app.MapGet("/debug/all-users", async (AppDbContext db) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error fetching users: {ex.Message}");
+        Console.WriteLine($"  Error fetching users: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to fetch users",
@@ -216,10 +216,10 @@ app.MapGet("/spotify/artist-top-tracks"!, async (
         if (string.IsNullOrWhiteSpace(artistName))
             return Results.BadRequest(new { success = false, message = "Artist name is required" });
 
-        Console.WriteLine($"🎵 Fetching tracks for artist: {artistName}");
+        Console.WriteLine($"  Fetching tracks for artist: {artistName}");
         var tracks = await spotifyService.GetArtistTopTracksAsync(artistName, limit);
 
-        Console.WriteLine($"✅ Found {tracks.Count} tracks");
+        Console.WriteLine($"  Found {tracks.Count} tracks");
         foreach (var track in tracks)
         {
             Console.WriteLine($"   - {track.Title} | Preview: {(track.PreviewUrl != null ? "✓" : "✗")}");
@@ -229,7 +229,7 @@ app.MapGet("/spotify/artist-top-tracks"!, async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error fetching artist tracks: {ex.Message}");
+        Console.WriteLine($"  Error fetching artist tracks: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch artist tracks");
     }
 })
@@ -251,7 +251,7 @@ app.MapGet("/spotify/genres-from-artists", async (SpotifyService spotifyService,
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error fetching genres: {ex.Message}");
+        Console.WriteLine($"  Error fetching genres: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to fetch genres");
     }
 })
@@ -312,7 +312,7 @@ app.MapPost("/users/{userId:guid}/profile", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error updating music profile: {ex.Message}");
+        Console.WriteLine($"  Error updating music profile: {ex.Message}");
         return Results.Problem(detail: ex.Message, title: "Failed to update music profile");
     }
 });
@@ -320,7 +320,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 {
     try
     {
-        // ✅ Validate required userId
+        //   Validate required userId
         if (userId == null || userId == Guid.Empty)
         {
             return Results.BadRequest(new TakeExUsersResponse
@@ -353,7 +353,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             });
         }
 
-        // 2️⃣ Fetch swiped, queued, and total users in parallel
+        //   Fetch swiped, queued, and total users in parallel
         var swipedTask = db.Likes
             .Where(l => l.FromUserId == currentUserId)
             .AsNoTracking()
@@ -377,9 +377,9 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
         var queueItems = queueTask.Result;
         var totalAvailable = totalUsersTask.Result;
 
-        Console.WriteLine($"📊 User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
+        Console.WriteLine($"  User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
 
-        // 3️⃣ Refill queue if needed
+        //   Refill queue if needed
         var queuedUserIds = queueItems.Select(q => q.SuggestedUserId).ToHashSet();
         bool needsQueueRefill = queueItems.Count < requestedCount * 2;
 
@@ -399,7 +399,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 
             if (candidateIds.Any())
             {
-                Console.WriteLine($"🔄 Batch processing {candidateIds.Count} new candidates...");
+                Console.WriteLine($"Batch processing {candidateIds.Count} new candidates...");
 
                 var candidates = await db.Users
                     .Include(u => u.MusicProfile)
@@ -450,7 +450,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
                     {
                         db.UserSuggestionQueues.AddRange(newInserts);
                         await db.SaveChangesAsync();
-                        Console.WriteLine($"✅ Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
+                        Console.WriteLine($"  Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
 
                         queueItems.AddRange(newInserts);
                         queueItems = queueItems
@@ -473,17 +473,17 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
                     }
                     else
                     {
-                        Console.WriteLine("⚠️ All candidates already existed in queue, skipping insert.");
+                        Console.WriteLine("  All candidates already existed in queue, skipping insert.");
                     }
                 }
                 catch (DbUpdateException ex)
                 {
-                    Console.WriteLine($"⚠️ Batch insert conflict: {ex.InnerException?.Message}");
+                    Console.WriteLine($"  Batch insert conflict: {ex.InnerException?.Message}");
                 }
             }
         }
 
-        // 4️⃣ Return top suggestions
+        //   Return top suggestions
         var topSuggestionIds = queueItems
             .Take(requestedCount)
             .Select(q => q.SuggestedUserId)
@@ -500,7 +500,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             });
         }
 
-        // 5️⃣ Fetch user details and FILTER users without MusicProfile
+        //   Fetch user details and FILTER users without MusicProfile
         var users = await db.Users
             .Include(u => u.MusicProfile)
             .Include(u => u.Images)
@@ -508,12 +508,12 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
             .AsNoTracking()
             .ToListAsync();
 
-        // ✅ FIX: Filter out users without MusicProfile before mapping
+        //   FIX: Filter out users without MusicProfile before mapping
         var validUsers = users.Where(u => u.MusicProfile != null).ToList();
 
         if (validUsers.Count < users.Count)
         {
-            Console.WriteLine($"⚠️ Filtered out {users.Count - validUsers.Count} users without MusicProfile");
+            Console.WriteLine($"  Filtered out {users.Count - validUsers.Count} users without MusicProfile");
         }
 
         var userDict = validUsers.ToDictionary(u => u.Id);
@@ -534,7 +534,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error in /users: {ex.Message}\n{ex.StackTrace}");
+        Console.WriteLine($"  Error in /users: {ex.Message}\n{ex.StackTrace}");
         return Results.Ok(new TakeExUsersResponse
         {
             Success = false,
@@ -553,7 +553,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
 {
     try
     {
-        Console.WriteLine($"🚀 Creating {count} temporary users...");
+        Console.WriteLine($"  Creating {count} temporary users...");
 
         var random = new Random();
         var names = new[] { "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn", "Sam", "Drew" };
@@ -577,7 +577,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
             "Tel Aviv, IL", "Tokyo, JP", "Sydney, AU", "Toronto, CA", "Barcelona, ES"
         };
         var bios = new[] {
-            "Music is my life 🎵",
+            "Music is my life  ",
             "Looking for someone who shares my taste in music",
             "Concert buddy wanted!",
             "Vinyl collector and coffee enthusiast ☕",
@@ -671,7 +671,7 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error creating users: {ex.Message}\n{ex.StackTrace}");
+        Console.WriteLine($"  Error creating users: {ex.Message}\n{ex.StackTrace}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to create users",
@@ -712,7 +712,7 @@ app.MapDelete("/dev/clear-users", async (AppDbContext db) =>
     }
 })
 .WithName("ClearAllUsers")
-.WithSummary("⚠️ DELETE all users (Development only)")
+.WithSummary("  DELETE all users (Development only)")
 .WithDescription("Removes ALL users and related data from database. Use with extreme caution!");
 // ---- Music Profile ----
 app.MapPost("/users/{id:guid}/music-profile", async (AppDbContext db, Guid id, MusicProfileDto dto) =>
@@ -961,34 +961,34 @@ app.MapGet("/callback", async (
         var code = req.Query["code"].ToString();
         var error = req.Query["error"].ToString();
 
-        Console.WriteLine($"🔐 Callback received - Code present: {!string.IsNullOrEmpty(code)}, Error: {error}");
+        Console.WriteLine($"  Callback received - Code present: {!string.IsNullOrEmpty(code)}, Error: {error}");
 
         if (!string.IsNullOrEmpty(error))
         {
-            Console.WriteLine($"❌ Spotify authorization declined: {error}");
+            Console.WriteLine($"  Spotify authorization declined: {error}");
             var errorRedirect = "spotilove://auth/error?message=Authorization declined";
             return Results.Redirect(errorRedirect);
         }
 
         if (string.IsNullOrEmpty(code))
         {
-            Console.WriteLine("❌ Missing authorization code");
+            Console.WriteLine("  Missing authorization code");
             var errorRedirect = "spotilove://auth/error?message=Missing authorization code";
             return Results.Redirect(errorRedirect);
         }
 
-        Console.WriteLine("✅ Valid callback code received");
+        Console.WriteLine("  Valid callback code received");
 
         // Connect to Spotify
         await spotify.ConnectUserAsync(code);
-        Console.WriteLine("✅ Connected to Spotify API");
+        Console.WriteLine("  Connected to Spotify API");
 
         // Fetch user profile
         var spotifyProfile = await spotify.GetUserProfileAsync();
 
         if (spotifyProfile == null || string.IsNullOrEmpty(spotifyProfile.Email))
         {
-            Console.WriteLine("❌ Failed to fetch Spotify profile");
+            Console.WriteLine("  Failed to fetch Spotify profile");
             var errorRedirect = "spotilove://auth/error?message=Unable to fetch email from Spotify";
             return Results.Redirect(errorRedirect);
         }
@@ -1032,7 +1032,7 @@ app.MapGet("/callback", async (
             db.Users.Add(user);
             await db.SaveChangesAsync();
 
-            Console.WriteLine($"✅ New user created: {user.Email} (ID: {user.Id})");
+            Console.WriteLine($"  New user created: {user.Email} (ID: {user.Id})");
         }
         else
         {
@@ -1041,7 +1041,7 @@ app.MapGet("/callback", async (
             user.LastLoginAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
 
-            Console.WriteLine($"✅ Existing user logged in: {user.Email} (ID: {user.Id})");
+            Console.WriteLine($"  Existing user logged in: {user.Email} (ID: {user.Id})");
         }
 
         // Generate auth token
@@ -1054,7 +1054,7 @@ app.MapGet("/callback", async (
         // Build deep link
         var deepLinkUrl = $"spotilove://auth/success?token={Uri.EscapeDataString(token)}&userId={user.Id}&isNewUser={isNewUser}&name={Uri.EscapeDataString(user.Name ?? "User")}";
 
-        Console.WriteLine($"🔗 Redirecting to app: {deepLinkUrl}");
+        Console.WriteLine($"  Redirecting to app: {deepLinkUrl}");
 
         // Start background music sync (don't await)
         _ = Task.Run(async () =>
@@ -1063,13 +1063,13 @@ app.MapGet("/callback", async (
             {
                 await Task.Delay(1000); // Wait for main request to complete
 
-                Console.WriteLine($"🎵 Starting background music sync for user {userId}");
+                Console.WriteLine($"  Starting background music sync for user {userId}");
 
                 var topSongs = await spotify.GetUserTopSongsAsync(10);
                 var topArtists = await spotify.GetUserTopArtistsWithImagesAsync(10);
                 var topGenres = await spotify.GetUserTopGenresAsync(20);
 
-                Console.WriteLine($"🎵 Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
+                Console.WriteLine($"  Fetched: {topSongs.Count} songs, {topArtists.Count} artists, {topGenres.Count} genres");
 
                 // Create new DbContext for background task
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
@@ -1102,12 +1102,12 @@ app.MapGet("/callback", async (
 
                     await bgDb.SaveChangesAsync();
 
-                    Console.WriteLine($"✅ Music profile updated successfully");
+                    Console.WriteLine($"  Music profile updated successfully");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ Background music sync failed: {ex.Message}");
+                Console.WriteLine($"  Background music sync failed: {ex.Message}");
             }
         });
 
@@ -1184,7 +1184,7 @@ app.MapGet("/callback", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Callback error: {ex.Message}");
+        Console.WriteLine($"  Callback error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
 
         var errorDeepLink = $"spotilove://auth/error?message={Uri.EscapeDataString(ex.Message)}";
@@ -1219,7 +1219,7 @@ app.MapGet("/callback", async (
 </head>
 <body>
     <div class='container'>
-        <h1>❌ Authentication Failed</h1>
+        <h1>  Authentication Failed</h1>
         <p>{ex.Message}</p>
         <p><a href='{errorDeepLink}'>Return to App</a></p>
     </div>
@@ -1289,7 +1289,7 @@ app.MapPut("/users/{userId:guid}/basic-profile", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Error updating basic profile: {ex.Message}");
+        Console.WriteLine($"  Error updating basic profile: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to update profile",
@@ -1305,7 +1305,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
 {
     try
     {
-        Console.WriteLine($"🎯 Taking {count} random users from DB...");
+        Console.WriteLine($"  Taking {count} random users from DB...");
 
         // Fetch all users first (or a large batch if your DB grows big)
         var allUsers = await db.Users
@@ -1315,7 +1315,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
 
         if (allUsers.Count == 0)
         {
-            Console.WriteLine("⚠️ No users found in DB");
+            Console.WriteLine("  No users found in DB");
             return Results.NotFound(new { success = false, message = "No users found in database" });
         }
 
@@ -1323,7 +1323,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
         var random = new Random();
         var users = allUsers.OrderBy(_ => random.Next()).Take(count).ToList();
 
-        Console.WriteLine($"✅ Retrieved {users.Count} random users");
+        Console.WriteLine($"  Retrieved {users.Count} random users");
 
         return Results.Ok(new
         {
@@ -1349,7 +1349,7 @@ app.MapGet("/takeExUsers", async (AppDbContext db, int count) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Failed to take users: {ex.Message}");
+        Console.WriteLine($"  Failed to take users: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to take users",
@@ -1366,12 +1366,12 @@ app.MapGet("/login", (SpotifyService spotify) =>
     try
     {
         var loginUrl = spotify.GetLoginUrl();
-        Console.WriteLine($"🔗 Redirecting to Spotify: {loginUrl}");
+        Console.WriteLine($"  Redirecting to Spotify: {loginUrl}");
         return Results.Redirect(loginUrl);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Login error: {ex.Message}");
+        Console.WriteLine($"  Login error: {ex.Message}");
         return Results.Problem(
             detail: ex.Message,
             title: "Failed to initiate Spotify login",
@@ -1390,18 +1390,18 @@ app.MapPost("/auth/register", async (
 {
     try
     {
-        Console.WriteLine($"📝 Registration attempt for email: {request.Email}");
+        Console.WriteLine($"  Registration attempt for email: {request.Email}");
 
         // Check if email already exists
         if (await db.Users.AnyAsync(u => u.Email == request.Email))
         {
-            Console.WriteLine($"❌ Email already exists: {request.Email}");
+            Console.WriteLine($"  Email already exists: {request.Email}");
             return Results.BadRequest(new { success = false, message = "Email already exists" });
         }
 
         // Hash password
         var hashedPassword = hasher.HashPassword(null!, request.Password);
-        Console.WriteLine("✅ Password hashed successfully");
+        Console.WriteLine("  Password hashed successfully");
 
         // Create user with ALL required fields
         var user = new User
@@ -1418,34 +1418,34 @@ app.MapPost("/auth/register", async (
             LastLoginAt = null
         };
 
-        Console.WriteLine($"✅ User object created: {user.Name}");
+        Console.WriteLine($"  User object created: {user.Name}");
 
         // Add user to database
         db.Users.Add(user);
 
         // Save changes and get the user ID
         var saveResult = await db.SaveChangesAsync();
-        Console.WriteLine($"✅ SaveChanges returned: {saveResult} changes");
-        Console.WriteLine($"✅ User ID assigned: {user.Id}");
+        Console.WriteLine($"  SaveChanges returned: {saveResult} changes");
+        Console.WriteLine($"  User ID assigned: {user.Id}");
         if (user.Id == Guid.Empty)
         {
-            Console.WriteLine("❌ User ID was not assigned properly!");
+            Console.WriteLine("  User ID was not assigned properly!");
             return Results.Problem("Failed to create user - ID not assigned");
         }
 
         // Generate token
         var token = Guid.NewGuid().ToString();
-        Console.WriteLine($"✅ Token generated: {token}");
+        Console.WriteLine($"  Token generated: {token}");
 
         // Verify user was saved by querying it back
         var savedUser = await db.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
         if (savedUser == null)
         {
-            Console.WriteLine($"❌ User {user.Id} was not found after save!");
+            Console.WriteLine($"  User {user.Id} was not found after save!");
             return Results.Problem("User creation failed - could not verify save");
         }
 
-        Console.WriteLine($"✅ User verified in database: {savedUser.Email}");
+        Console.WriteLine($"  User verified in database: {savedUser.Email}");
 
         return Results.Ok(new
         {
@@ -1466,12 +1466,12 @@ app.MapPost("/auth/register", async (
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"❌ Registration error: {ex.Message}");
-        Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+        Console.WriteLine($"  Registration error: {ex.Message}");
+        Console.WriteLine($"  Stack trace: {ex.StackTrace}");
 
         if (ex.InnerException != null)
         {
-            Console.WriteLine($"❌ Inner exception: {ex.InnerException.Message}");
+            Console.WriteLine($"  Inner exception: {ex.InnerException.Message}");
         }
 
         return Results.Problem(

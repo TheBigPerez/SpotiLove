@@ -256,7 +256,7 @@ public class SpotifyService
 
             if (searchResponse.Artists.Items == null || !searchResponse.Artists.Items.Any())
             {
-                Console.WriteLine($"❌ Artist '{artistName}' not found");
+                Console.WriteLine($"  Artist '{artistName}' not found");
                 return new List<SpotifySongDto>();
             }
 
@@ -283,11 +283,11 @@ public class SpotifyService
 
             if (artist == null)
             {
-                Console.WriteLine($"❌ No valid artist match for '{artistName}'");
+                Console.WriteLine($"  No valid artist match for '{artistName}'");
                 return new List<SpotifySongDto>();
             }
 
-            Console.WriteLine($"✅ Final chosen artist: {artist.Name} (ID: {artist.Id})");
+            Console.WriteLine($"  Final chosen artist: {artist.Name} (ID: {artist.Id})");
 
             var topTracksResponse = await _spotify.Artists.GetTopTracks(artist.Id, new ArtistsTopTracksRequest("US"));
 
@@ -318,7 +318,7 @@ public class SpotifyService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error: {ex.Message}");
+            Console.WriteLine($"  Error: {ex.Message}");
             return new List<SpotifySongDto>();
         }
     }
@@ -388,7 +388,7 @@ public class SpotifyService
                         var previewUrl = previewElement.GetString();
                         if (!string.IsNullOrEmpty(previewUrl))
                         {
-                            Console.WriteLine($"   ✅ Found Deezer preview: {trackName}");
+                            Console.WriteLine($"     Found Deezer preview: {trackName}");
                             return previewUrl;
                         }
                     }
@@ -399,7 +399,7 @@ public class SpotifyService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"   ⚠️ Deezer search failed for '{trackName}': {ex.Message}");
+            Console.WriteLine($"     Deezer search failed for '{trackName}': {ex.Message}");
             return null;
         }
     }
