@@ -12,7 +12,7 @@ DotNetEnv.Env.Load(); // load .env file
 var builder = WebApplication.CreateBuilder(args);
 
 // ===========================================================
-// 🧩 DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
+//    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration.GetValue<string>("ConnectionStrings:Sqlite")
