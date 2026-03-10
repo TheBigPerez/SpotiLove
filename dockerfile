@@ -9,6 +9,7 @@ WORKDIR /app
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:10000
 EXPOSE 10000
+EXPOSE 3000
 
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "JsonDemo.dll"]
