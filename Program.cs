@@ -78,7 +78,20 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    await db.Database.MigrateAsync();
+    var isPostgres = connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://");
+
+    if (isPostgres)
+    {
+        // PostgreSQL: use proper migrations (run `dotnet ef migrations add InitialCreate` once)
+        await db.Database.MigrateAsync();
+    }
+    else
+    {
+        // SQLite: EnsureCreated creates all tables directly from your model
+        // (no migration files needed — perfect for local/dev/small deployments)
+        await db.Database.EnsureCreatedAsync();
+        Console.WriteLine("SQLite schema ensured (EnsureCreated)");
+    }
 }
 
 // ===========================================================
