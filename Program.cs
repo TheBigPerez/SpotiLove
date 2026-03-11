@@ -69,6 +69,23 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    Console.WriteLine($">>> {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
+
+    if (context.Request.ContentLength > 0 && context.Request.ContentType?.Contains("json") == true)
+    {
+        context.Request.EnableBuffering();
+        var body = await new System.IO.StreamReader(context.Request.Body).ReadToEndAsync();
+        context.Request.Body.Position = 0;
+        // Truncate to avoid logging huge base64 images
+        Console.WriteLine($">>> Body: {body[..Math.Min(300, body.Length)]}");
+    }
+
+    await next();
+
+    Console.WriteLine($"<<< {context.Response.StatusCode} {context.Request.Path}");
+});
 app.UseCors("AllowAll");
 
 // ===========================================================
@@ -97,12 +114,8 @@ using (var scope = app.Services.CreateScope())
 // ===========================================================
 //   DEVELOPMENT TOOLS
 // ===========================================================
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
+app.UseSwagger();
+app.UseSwaggerUI();
 // ===========================================================
 //   SERVER CONFIGURATION
 // ===========================================================

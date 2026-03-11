@@ -1418,7 +1418,7 @@
           "lib/netcoreapp3.1/Spotify.dll": {}
         }
       },
-      "SpotifyAPI.Web/7.2.1": {
+      "SpotifyAPI.Web/7.4.2": {
         "type": "package",
         "dependencies": {
           "Newtonsoft.Json": "13.0.3"
@@ -5686,10 +5686,10 @@
         "spotify.nuspec"
       ]
     },
-    "SpotifyAPI.Web/7.2.1": {
-      "sha512": "7yatLKdwPmigJ+GGPUHwZppYzWNIPOSrpA3KKK/kndJl657zm1yzaAQ7j2xy3G7lyiKsdRZtz4k6CpFN32pyng==",
+    "SpotifyAPI.Web/7.4.2": {
+      "sha512": "DxyIO+oxI7gyqyGJ5QzVWf31JInRDRhqGtTXIKX6HUJBie+aR+OuB4bFSYWNVO6GL4V+Tm3PQBKNBa+UJzchOA==",
       "type": "package",
-      "path": "spotifyapi.web/7.2.1",
+      "path": "spotifyapi.web/7.4.2",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -5705,7 +5705,7 @@
         "lib/netstandard2.0/SpotifyAPI.Web.xml",
         "lib/netstandard2.1/SpotifyAPI.Web.dll",
         "lib/netstandard2.1/SpotifyAPI.Web.xml",
-        "spotifyapi.web.7.2.1.nupkg.sha512",
+        "spotifyapi.web.7.4.2.nupkg.sha512",
         "spotifyapi.web.nuspec"
       ]
     },
@@ -9560,7 +9560,7 @@
       "Microsoft.EntityFrameworkCore.Tools >= 9.0.8",
       "Npgsql.EntityFrameworkCore.PostgreSQL >= 9.0.4",
       "Spotify >= 1.0.0",
-      "SpotifyAPI.Web >= 7.2.1",
+      "SpotifyAPI.Web >= 7.4.2",
       "SpotifyAPI.Web.Auth >= 7.2.1",
       "Swashbuckle.AspNetCore >= 9.0.4",
       "System.Data.SQLite >= 2.0.1"
@@ -9667,7 +9667,7 @@
           },
           "SpotifyAPI.Web": {
             "target": "Package",
-            "version": "[7.2.1, )"
+            "version": "[7.4.2, )"
           },
           "SpotifyAPI.Web.Auth": {
             "target": "Package",
