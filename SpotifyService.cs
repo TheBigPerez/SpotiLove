@@ -53,7 +53,37 @@ public class SpotifyService
     }
     public string? GetRefreshToken() => _refreshToken;
 
+    public async Task<string?> GetOwnerAccessTokenAsync()
+    {
+        try
+        {
+            var refreshToken = Environment.GetEnvironmentVariable("SPOTIFY_OWNER_REFRESH_TOKEN");
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                Console.WriteLine("No SPOTIFY_OWNER_REFRESH_TOKEN in env");
+                return null;
+            }
 
+            var oauth = new OAuthClient();
+            var response = await oauth.RequestToken(
+                new AuthorizationCodeRefreshRequest(_clientId, _clientSecret, refreshToken)
+            );
+
+            // Update stored refresh token if Spotify rotated it
+            if (!string.IsNullOrEmpty(response.RefreshToken))
+            {
+                // Optionally update env — for now just use the new access token
+                Console.WriteLine("Owner token refreshed successfully");
+            }
+
+            return response.AccessToken;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to get owner token: {ex.Message}");
+            return null;
+        }
+    }
     public async Task ConnectUserAsync(string code)
     {
         var oauth = new OAuthClient();

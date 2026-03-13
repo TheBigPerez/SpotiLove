@@ -23,19 +23,20 @@ public static class PlayerEndpoint
 
     public static void MapSpotifyPlayer(this WebApplication app)
     {
-        // Returns the stored Spotify access token for a user
-        app.MapGet("/player/token/{userId:guid}", (Guid userId) =>
+        // Now returns the app owner's token for ALL users
+        app.MapGet("/player/token/{userId:guid}", async (Guid userId, SpotifyService spotify) =>
         {
-            var token = GetToken(userId);
-            if (token == null)
-                return Results.NotFound(new { success = false, message = "No Spotify token found. Please log in with Spotify." });
+            var token = await spotify.GetOwnerAccessTokenAsync();
+
+            if (string.IsNullOrEmpty(token))
+                return Results.Problem("Could not get Spotify token. Check SPOTIFY_OWNER_REFRESH_TOKEN in .env");
 
             return Results.Ok(new { success = true, token });
         })
         .WithName("GetPlayerToken")
-        .WithSummary("Get Spotify access token for Web Playback SDK");
+        .WithSummary("Get Spotify owner token for Web Playback SDK");
 
-        // Serves the HTML player page
+        // Player page stays the same
         app.MapGet("/player", (string? token) =>
         {
             var html = BuildPlayerHtml(token ?? "");
@@ -44,7 +45,6 @@ public static class PlayerEndpoint
         .WithName("SpotifyPlayer")
         .WithSummary("Spotify Web Playback SDK HTML player");
     }
-
     private static string BuildPlayerHtml(string token) => $@"
 <!DOCTYPE html>
 <html>
