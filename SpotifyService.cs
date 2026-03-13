@@ -14,10 +14,10 @@ public class SpotifyService
     private readonly string _clientId;
     private readonly string _clientSecret;
     private readonly string _redirectUri;
+    private string? _accessToken;
+    public string? GetAccessToken() => _accessToken;
 
-    /// <summary>
     /// A record to hold artist information including their name and image URL.
-    /// </summary>
     public record ArtistInfo(string Name, string? ImageUrl);
 
     private string? _refreshToken; // Used to refresh tokens without user interaction
@@ -43,7 +43,8 @@ public class SpotifyService
                 Scopes.UserReadEmail,
                 Scopes.UserReadPrivate,
                 Scopes.UserTopRead, // Crucial for fetching top artists/songs/genres
-                Scopes.UserReadPlaybackState // Example for future features
+                Scopes.UserReadPlaybackState,
+                Scopes.Streaming
             },
             // Note: In a production app, you would generate and check the state parameter for CSRF protection.
         };
@@ -57,7 +58,7 @@ public class SpotifyService
         var tokenResponse = await oauth.RequestToken(
             new AuthorizationCodeTokenRequest(_clientId, _clientSecret, code, new Uri(_redirectUri))
         );
-
+        _accessToken = tokenResponse.AccessToken;
         _spotify = new SpotifyClient(tokenResponse.AccessToken);
         _refreshToken = tokenResponse.RefreshToken;
     }

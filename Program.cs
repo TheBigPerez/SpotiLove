@@ -1009,9 +1009,9 @@ app.MapGet("/callback", async (
         await spotify.ConnectUserAsync(code);
         Console.WriteLine("  Connected to Spotify API");
 
+
         // Fetch user profile
         var spotifyProfile = await spotify.GetUserProfileAsync();
-
         if (spotifyProfile == null || string.IsNullOrEmpty(spotifyProfile.Email))
         {
             Console.WriteLine("  Failed to fetch Spotify profile");
@@ -1028,6 +1028,7 @@ app.MapGet("/callback", async (
 
         User user;
         bool isNewUser = false;
+
 
         if (existingUser == null)
         {
@@ -1065,7 +1066,12 @@ app.MapGet("/callback", async (
             // EXISTING USER - Update login time
             user = existingUser;
             user.LastLoginAt = DateTime.UtcNow;
+            var spotifyToken = spotify.GetAccessToken();
             await db.SaveChangesAsync();
+            if (spotifyToken != null && user?.Id != null)
+            {
+                PlayerEndpoint.StoreToken(user.Id, spotifyToken);
+            }
 
             Console.WriteLine($"  Existing user logged in: {user.Email} (ID: {user.Id})");
         }
@@ -1591,5 +1597,5 @@ app.MapPost("/swipe/{fromUserId:guid}/pass/{toUserId:guid}", SwipeEndpoints.Pass
 app.MapGet("/matches/{userId:guid}", SwipeEndpoints.GetUserMatches);
 app.MapGet("/swipe/stats/{userId:guid}", SwipeEndpoints.GetSwipeStats);
 Console.WriteLine($"📖 View API documentation at: http://localhost:{port}/swagger");
-
+app.MapSpotifyPlayer();
 app.Run();

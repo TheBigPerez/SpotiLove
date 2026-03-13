@@ -207,3 +207,15 @@ C:\Users\User\Desktop\DanielHamelech\SpotiLove\JsonDemo\bin\Debug\net9.0\runtime
 C:\Users\User\Desktop\DanielHamelech\SpotiLove\JsonDemo\bin\Debug\net9.0\runtimes\win-x86\native\Microsoft.Data.SqlClient.SNI.dll
 C:\Users\User\Desktop\DanielHamelech\SpotiLove\JsonDemo\bin\Debug\net9.0\runtimes\win\lib\net9.0\System.Diagnostics.EventLog.dll
 C:\Users\User\Desktop\DanielHamelech\SpotiLove\JsonDemo\bin\Debug\net9.0\runtimes\win\lib\net9.0\System.Security.Cryptography.Pkcs.dll
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.csproj.AssemblyReference.cache
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\rpswa.dswa.cache.json
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.AssemblyInfoInputs.cache
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.AssemblyInfo.cs
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.csproj.CoreCompileInputs.cache
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.sourcelink.json
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.dll
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\refint\JsonDemo.dll
+C:\Users\donyb\Desktop\Handasat Tochna\SpotiLove\obj\Debug\net9.0\JsonDemo.pdb
