@@ -51,6 +51,8 @@ public class SpotifyService
 
         return request.ToUri().ToString();
     }
+    public string? GetRefreshToken() => _refreshToken;
+
 
     public async Task ConnectUserAsync(string code)
     {

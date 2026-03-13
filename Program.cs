@@ -976,6 +976,13 @@ static string BuildNpgsqlConnectionString(string databaseUrl)
 }
 //==========EndPoints=========
 // SINGLE Spotify OAuth Callback - handles both login and signup
+app.MapGet("/dev/get-my-refresh-token", async (SpotifyService spotify, HttpResponse res) =>
+{
+    // After you visit /login and complete OAuth, call this:
+    var token = spotify.GetRefreshToken();
+    return Results.Ok(new { refreshToken = token });
+});
+
 app.MapGet("/callback", async (
     HttpRequest req,
     SpotifyService spotify,
