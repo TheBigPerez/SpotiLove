@@ -645,7 +645,13 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
                     FavoriteGenres = favoriteGenres,
                     FavoriteArtists = favoriteArtists,
                     FavoriteSongs = favoriteSongs
-                }
+                },
+                SexualOrientation = random.Next(3) switch
+                {
+                    0 => "Male",
+                    1 => "Female",
+                    _ => "Both"
+                },
             };
 
             users.Add(user);
