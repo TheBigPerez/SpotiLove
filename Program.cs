@@ -181,6 +181,26 @@ app.MapGet("/spotify/search-artists", async (SpotifyService spotifyService, stri
 .WithName("SearchArtists")
 .WithSummary("Search for artists on Spotify");
 
+//search songs
+app.MapGet("/spotify/search-songs", async (SpotifyService spotifyService, string query, int limit = 20) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Results.BadRequest("Query parameter is required");
+
+        var songs = await spotifyService.SearchSongsAsync(query, limit);
+        return Results.Ok(songs);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"  Error searching songs: {ex.Message}");
+        return Results.Problem(detail: ex.Message, title: "Failed to search songs");
+    }
+})
+.WithName("SearchSongs")
+.WithSummary("Search for songs on Spotify");
+
 app.MapGet("/debug/all-users", async (AppDbContext db) =>
 {
     try
@@ -1593,6 +1613,7 @@ app.MapPost("/users/{id:guid}/images", Endpoints.AddUserImage);
 
 // ---- Swiping Endpoints ----
 app.MapGet("/swipe/discover/{userId:guid}", SwipeEndpoints.GetPotentialMatches);
+app.MapPost("/swipe", SwipeEndpoints.SwipeOnUser);
 app.MapPost("/swipe/{fromUserId:guid}/like/{toUserId:guid}", SwipeEndpoints.LikeUser);
 app.MapPost("/swipe/{fromUserId:guid}/pass/{toUserId:guid}", SwipeEndpoints.PassUser);
 app.MapGet("/matches/{userId:guid}", SwipeEndpoints.GetUserMatches);

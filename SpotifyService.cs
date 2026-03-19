@@ -202,7 +202,42 @@ public class SpotifyService
                      .Take(limit)
                      .ToList();
     }
+    public async Task<List<SpotifySongDto>> SearchSongsAsync(string query, int limit = 20)
+    {
+        await EnsureClientIsAuthenticatedAsync();
+        if (_spotify == null) throw new Exception("Could not authenticate with Spotify");
 
+        var searchRequest = new SearchRequest(SearchRequest.Types.Track, query) { Limit = limit };
+        var searchResponse = await _spotify.Search.Item(searchRequest);
+
+        var results = new List<SpotifySongDto>();
+        if (searchResponse.Tracks?.Items == null) return results;
+
+        foreach (var track in searchResponse.Tracks.Items)
+        {
+            string? deezerPreviewUrl = null;
+            try
+            {
+                deezerPreviewUrl = await GetDeezerPreviewUrlAsync(
+                    track.Name,
+                    track.Artists.FirstOrDefault()?.Name ?? "");
+            }
+            catch { }
+
+            results.Add(new SpotifySongDto
+            {
+                Title = track.Name,
+                Artist = string.Join(", ", track.Artists.Select(a => a.Name)),
+                PreviewUrl = track.PreviewUrl,
+                DeezerPreviewUrl = deezerPreviewUrl,
+                SpotifyUri = track.Uri,
+                SpotifyUrl = track.ExternalUrls.ContainsKey("spotify")
+                    ? track.ExternalUrls["spotify"] : null
+            });
+        }
+
+        return results;
+    }
     public async Task<List<ArtistInfo>> SearchArtistsAsync(string query, int limit = 10)
     {
         await EnsureClientIsAuthenticatedAsync();
