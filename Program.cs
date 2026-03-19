@@ -18,25 +18,23 @@ var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-    if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
-    {
-        var databaseUri = new Uri(connectionString);
-        var userInfo = databaseUri.UserInfo.Split(':', 2);
+    if (string.IsNullOrEmpty(connectionString))
+        throw new Exception("DATABASE_URL is missing");
 
-        var connStr =
-            $"Host={databaseUri.Host};" +
-            $"Port={databaseUri.Port};" +
-            $"Database={databaseUri.LocalPath.TrimStart('/')};" +
-            $"Username={userInfo[0]};" +
-            $"Password={userInfo[1]};" +
-            $"SSL Mode=Require;" +
-            $"Trust Server Certificate=true";
+    var databaseUri = new Uri(connectionString);
+    var userInfo = databaseUri.UserInfo.Split(':', 2);
 
-        opt.UseNpgsql(connStr)
-           .UseSnakeCaseNamingConvention();
+    var connStr =
+        $"Host={databaseUri.Host};" +
+        $"Port={databaseUri.Port};" +
+        $"Database={databaseUri.LocalPath.TrimStart('/')};" +
+        $"Username={userInfo[0]};" +
+        $"Password={userInfo[1]};" +
+        $"SSL Mode=Require;" +
+        $"Trust Server Certificate=true";
 
-        Console.WriteLine("Using PostgreSQL database");
-    }
+    opt.UseNpgsql(connStr)
+       .UseSnakeCaseNamingConvention();
 });
 
 // ===========================================================

@@ -40,10 +40,6 @@ public class DesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
             builder.UseNpgsql(connStrBuilder.ConnectionString)
                    .UseSnakeCaseNamingConvention();
         }
-        else
-        {
-            builder.UseSqlite(connectionString);
-        }
 
         return new AppDbContext(builder.Options);
     }
