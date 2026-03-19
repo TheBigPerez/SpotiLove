@@ -14,9 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ===========================================================
 //    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
-    ?? builder.Configuration.GetValue<string>("ConnectionStrings:Sqlite")
-    ?? "Data Source=spotilove.db";
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
@@ -38,11 +36,6 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
            .UseSnakeCaseNamingConvention();
 
         Console.WriteLine("Using PostgreSQL database");
-    }
-    else
-    {
-        opt.UseSqlite(connectionString);
-        Console.WriteLine("Using SQLite database");
     }
 });
 
@@ -99,15 +92,12 @@ using (var scope = app.Services.CreateScope())
 
     if (isPostgres)
     {
-        // PostgreSQL: use proper migrations (run `dotnet ef migrations add InitialCreate` once)
+        // PostgreSQL: use proper migrations
         await db.Database.MigrateAsync();
     }
     else
     {
-        // SQLite: EnsureCreated creates all tables directly from your model
-        // (no migration files needed — perfect for local/dev/small deployments)
         await db.Database.EnsureCreatedAsync();
-        Console.WriteLine("SQLite schema ensured (EnsureCreated)");
     }
 }
 
@@ -900,16 +890,11 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var cs = Environment.GetEnvironmentVariable("DATABASE_URL")
-                 ?? "Data Source=spotilove.db";
+        var cs = Environment.GetEnvironmentVariable("DATABASE_URL");
 
         if (cs.StartsWith("postgres://") || cs.StartsWith("postgresql://"))
         {
             optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(cs));
-        }
-        else
-        {
-            optionsBuilder.UseSqlite(cs);
         }
 
         using var db = new AppDbContext(optionsBuilder.Options);
@@ -1136,10 +1121,7 @@ app.MapGet("/callback", async (
 
                     optionsBuilder.UseNpgsql(connStr).UseSnakeCaseNamingConvention();
                 }
-                else
-                {
-                    optionsBuilder.UseSqlite(connectionString);
-                }
+                optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(connectionString));
 
                 using var bgDb = new AppDbContext(optionsBuilder.Options);
 
