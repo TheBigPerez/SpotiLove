@@ -14,23 +14,26 @@ var builder = WebApplication.CreateBuilder(args);
 // ===========================================================
 //    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+// Accept both naming conventions: DATABASE_URL (production/Coolify) or DatabaseURL (legacy .env)
+var connectionString =
+    Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
     if (string.IsNullOrEmpty(connectionString))
-        throw new Exception("DATABASE_URL is missing");
+        throw new Exception("DATABASE_URL environment variable is missing");
 
     var databaseUri = new Uri(connectionString);
     var userInfo = databaseUri.UserInfo.Split(':', 2);
 
+    // Use SSL Prefer so it works both with and without SSL enabled on the server
     var connStr =
         $"Host={databaseUri.Host};" +
         $"Port={databaseUri.Port};" +
         $"Database={databaseUri.LocalPath.TrimStart('/')};" +
         $"Username={userInfo[0]};" +
         $"Password={userInfo[1]};" +
-        $"SSL Mode=Require;" +
+        $"SSL Mode=Prefer;" +
         $"Trust Server Certificate=true";
 
     opt.UseNpgsql(connStr)
@@ -888,7 +891,8 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var cs = Environment.GetEnvironmentVariable("DATABASE_URL");
+        var cs = Environment.GetEnvironmentVariable("DATABASE_URL")
+                 ?? Environment.GetEnvironmentVariable("DatabaseURL");
 
         if (cs.StartsWith("postgres://") || cs.StartsWith("postgresql://"))
         {
@@ -981,7 +985,7 @@ static string BuildNpgsqlConnectionString(string databaseUrl)
         Username = userInfo[0],
         Password = userInfo[1],
         Database = uri.AbsolutePath.TrimStart('/'),
-        SslMode = Npgsql.SslMode.Require,
+        SslMode = Npgsql.SslMode.Prefer,
     }.ConnectionString;
 }
 //==========EndPoints=========
