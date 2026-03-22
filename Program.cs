@@ -473,49 +473,48 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 
                 try
                 {
-                    var existingPairs = await db.UserSuggestionQueues
-                        .Where(q => q.UserId == currentUserId &&
-                                    candidateIds.Contains(q.SuggestedUserId))
-                        .Select(q => q.SuggestedUserId)
-                        .ToListAsync();
-
-                    var newInserts = batchInserts
-                        .Where(b => !existingPairs.Contains(b.SuggestedUserId))
-                        .ToList();
-
-                    if (newInserts.Any())
+                    // Insert with ON CONFLICT DO NOTHING to avoid duplicate key errors
+                    // caused by concurrent requests or repeated calls for the same user.
+                    int inserted = 0;
+                    foreach (var item in batchInserts)
                     {
-                        db.UserSuggestionQueues.AddRange(newInserts);
-                        await db.SaveChangesAsync();
-                        Console.WriteLine($"  Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
-
-                        queueItems.AddRange(newInserts);
-                        queueItems = queueItems
-                            .OrderByDescending(q => q.CompatibilityScore)
-                            .Take(requestedCount * 3)
-                            .ToList();
-
-                        var idsToUpdate = scoredCandidates
-                            .Where(s => s.Score >= 60)
-                            .Take(10)
-                            .Select(s => s.UserId)
-                            .ToList();
-
-                        if (idsToUpdate.Any())
+                        var rows = await db.Database.ExecuteSqlRawAsync(
+                            @"INSERT INTO ""UserSuggestionQueues""
+                              (""UserId"", ""SuggestedUserId"", ""CompatibilityScore"", ""QueuePosition"", ""CreatedAt"")
+                              VALUES ({0}, {1}, {2}, {3}, {4})
+                              ON CONFLICT DO NOTHING",
+                            item.UserId, item.SuggestedUserId,
+                            item.CompatibilityScore, item.QueuePosition, item.CreatedAt);
+                        if (rows > 0)
                         {
-                            _ = Task.Run(() => UpdateQueueScoresInBackground(
-                                currentUserId,
-                                idsToUpdate));
+                            queueItems.Add(item);
+                            inserted++;
                         }
                     }
-                    else
+
+                    Console.WriteLine($"  Inserted {inserted} new queue items (skipped {batchInserts.Count - inserted} duplicates)");
+
+                    queueItems = queueItems
+                        .OrderByDescending(q => q.CompatibilityScore)
+                        .Take(requestedCount * 3)
+                        .ToList();
+
+                    var idsToUpdate = scoredCandidates
+                        .Where(s => s.Score >= 60)
+                        .Take(10)
+                        .Select(s => s.UserId)
+                        .ToList();
+
+                    if (idsToUpdate.Any())
                     {
-                        Console.WriteLine("  All candidates already existed in queue, skipping insert.");
+                        _ = Task.Run(() => UpdateQueueScoresInBackground(
+                            currentUserId,
+                            idsToUpdate));
                     }
                 }
-                catch (DbUpdateException ex)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"  Batch insert conflict: {ex.InnerException?.Message}");
+                    Console.WriteLine($"  Batch insert error: {ex.Message}");
                 }
             }
         }
