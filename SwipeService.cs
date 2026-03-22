@@ -22,17 +22,31 @@ public class SwipeService
 
         if (existingSwipe != null)
         {
-            existingSwipe.IsLike = isLike; // Update existing swipe
+            existingSwipe.IsLike = isLike;
             existingSwipe.CreatedAt = DateTime.UtcNow;
         }
         else
         {
-            // Add new swipe
+            // Check for a mutual match
+            bool isMatch = false;
+            if (isLike)
+            {
+                var reverseLike = await _db.Likes
+                    .FirstOrDefaultAsync(l => l.FromUserId == toUserId && l.ToUserId == fromUserId && l.IsLike);
+
+                if (reverseLike != null)
+                {
+                    isMatch = true;
+                    reverseLike.IsMatch = true;
+                }
+            }
+
             var like = new Like
             {
                 FromUserId = fromUserId,
                 ToUserId = toUserId,
                 IsLike = isLike,
+                IsMatch = isMatch,
                 CreatedAt = DateTime.UtcNow
             };
             _db.Likes.Add(like);

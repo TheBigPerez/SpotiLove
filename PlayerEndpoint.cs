@@ -7,20 +7,6 @@ namespace Spotilove;
 
 public static class PlayerEndpoint
 {
-    // Stores Spotify access tokens per user (in-memory, lives as long as server runs)
-    private static readonly Dictionary<Guid, string> _userTokens = new();
-
-    // Called from SpotifyService after OAuth — stores the real Spotify access token
-    public static void StoreToken(Guid userId, string spotifyAccessToken)
-    {
-        _userTokens[userId] = spotifyAccessToken;
-    }
-
-    public static string? GetToken(Guid userId)
-    {
-        return _userTokens.TryGetValue(userId, out var token) ? token : null;
-    }
-
     public static void MapSpotifyPlayer(this WebApplication app)
     {
         // Now returns the app owner's token for ALL users
@@ -29,7 +15,7 @@ public static class PlayerEndpoint
             var token = await spotify.GetOwnerAccessTokenAsync();
 
             if (string.IsNullOrEmpty(token))
-                return Results.Problem("Could not get Spotify token. Check SPOTIFY_OWNER_REFRESH_TOKEN in .env");
+                return Results.Problem("Could not get Spotify token. Check SpotifyOwnerRefreshToken in .env");
 
             return Results.Ok(new { success = true, token });
         })
