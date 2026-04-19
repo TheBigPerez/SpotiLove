@@ -627,5 +627,163 @@ public class SpotifyService
             .Take(20)
             .ToList();
     }
+    // ---------- Playlist helpers ------------------------------------
 
+    /// Creates a playlist on the owner's account and returns (playlistId, playlistUrl).
+    public async Task<(string? playlistId, string? playlistUrl)> CreateCollaborativePlaylistAsync(
+        string name,
+        string description)
+    {
+        try
+        {
+            var ownerToken = await GetOwnerAccessTokenAsync();
+            if (string.IsNullOrEmpty(ownerToken))
+            {
+                Console.WriteLine("No owner token available for playlist creation");
+                return (null, null);
+            }
+
+            var ownerClient = new SpotifyClient(ownerToken);
+            var profile = await ownerClient.UserProfile.Current();
+
+            var request = new PlaylistCreateRequest(name)
+            {
+                Description = description,
+                Public = true,
+                Collaborative = false   // collaborative requires private; keep public for easy sharing
+            };
+
+            var playlist = await ownerClient.Playlists.Create(profile.Id, request);
+
+            string? playlistUrl = null;
+            if (playlist.ExternalUrls != null &&
+                playlist.ExternalUrls.TryGetValue("spotify", out var url))
+            {
+                playlistUrl = url;
+            }
+
+            Console.WriteLine($"  Playlist created: {playlist.Id} — {playlistUrl}");
+            return (playlist.Id, playlistUrl);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"CreateCollaborativePlaylistAsync error: {ex.Message}");
+            return (null, null);
+        }
+    }
+
+    /// Adds a list of Spotify track URIs to a playlist (batched by 100).
+    public async Task<bool> AddTracksToPlaylistAsync(string playlistId, List<string> trackUris)
+    {
+        try
+        {
+            var ownerToken = await GetOwnerAccessTokenAsync();
+            if (string.IsNullOrEmpty(ownerToken)) return false;
+
+            var ownerClient = new SpotifyClient(ownerToken);
+
+            for (int i = 0; i < trackUris.Count; i += 100)
+            {
+                var batch = trackUris.Skip(i).Take(100).ToList();
+                var addRequest = new PlaylistAddItemsRequest(batch);
+                await ownerClient.Playlists.AddItems(playlistId, addRequest);
+                await Task.Delay(150); // respect rate limits
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"AddTracksToPlaylistAsync error: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// Searches Spotify for a list of "Title by Artist" strings and returns their URIs.
+    public async Task<List<string>> SearchTrackUrisAsync(List<string> songStrings)
+    {
+        await EnsureClientIsAuthenticatedAsync();
+        if (_spotify == null) return new List<string>();
+
+        var uris = new List<string>();
+
+        foreach (var song in songStrings)
+        {
+            try
+            {
+                string query;
+
+                // Songs stored as "Title by Artist" — split on " by "
+                var idx = song.IndexOf(" by ", StringComparison.OrdinalIgnoreCase);
+                if (idx > 0)
+                {
+                    var title = song[..idx].Trim();
+                    var artist = song[(idx + 4)..].Trim();
+                    query = $"track:{title} artist:{artist}";
+                }
+                else
+                {
+                    query = song;
+                }
+
+                var searchRequest = new SearchRequest(SearchRequest.Types.Track, query) { Limit = 1 };
+                var results = await _spotify.Search.Item(searchRequest);
+
+                var track = results.Tracks?.Items?.FirstOrDefault();
+                if (track != null)
+                {
+                    uris.Add(track.Uri);
+                    Console.WriteLine($"  Found: {song}  →  {track.Uri}");
+                }
+                else
+                {
+                    Console.WriteLine($"  Not found: {song}");
+                }
+
+                await Task.Delay(120); // Spotify rate limit buffer
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SearchTrackUris error for '{song}': {ex.Message}");
+            }
+        }
+
+        return uris;
+    }
+
+    /// Uploads the SpotiLove logo as the playlist cover image.
+    /// The image is a minimal green heart — encoded inline as base64 JPEG.
+    public async Task SetPlaylistCoverImageAsync(string playlistId)
+    {
+        try
+        {
+            var ownerToken = await GetOwnerAccessTokenAsync();
+            if (string.IsNullOrEmpty(ownerToken)) return;
+
+            string? logoBase64 = File.ReadAllLines("Base64Logo.txt").FirstOrDefault();
+            if (string.IsNullOrEmpty(logoBase64)) { logoBase64 = "PlaceHolderBase64String"; };
+            if (logoBase64 == "PlaceHolderBase64String") return;
+
+            // Upload the image
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ownerToken);
+
+            var content = new StringContent(logoBase64);
+            content.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+
+            var response = await httpClient.PutAsync(
+                $"https://api.spotify.com/v1/playlists/{playlistId}/images",
+                content);
+
+            if (response.IsSuccessStatusCode)
+                Console.WriteLine("  Playlist cover image set");
+            else
+                Console.WriteLine($"  Cover image upload failed: {response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SetPlaylistCoverImageAsync error: {ex.Message}");
+        }
+    }
 }

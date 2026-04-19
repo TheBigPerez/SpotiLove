@@ -1110,7 +1110,7 @@ app.MapGet("/callback", async (
                 // Create new DbContext for background task
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-                if (connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
+                if (connectionString!.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
                 {
                     var uri = new Uri(connectionString);
                     var userInfo = uri.UserInfo.Split(':', 2);
@@ -1580,6 +1580,16 @@ app.MapDelete("/chats/message/{messageId:guid}",
     (AppDbContext db, Guid messageId, Guid userId) => ChatEndpoints.DeleteMessage(db, messageId, userId))
     .WithName("DeleteMessage")
     .WithSummary("Delete a message");
+
+app.MapPost("/matches/{userId:guid}/create-playlist/{matchedUserId:guid}",
+    PlaylistEndpoints.CreateMatchPlaylist)
+    .WithName("CreateMatchPlaylist")
+    .WithSummary("Create a shared Spotify playlist for two matched users");
+
+app.MapGet("/matches/{userId:guid}/playlist-status/{matchedUserId:guid}",
+    PlaylistEndpoints.GetPlaylistStatus)
+    .WithName("GetPlaylistStatus")
+    .WithSummary("Check if two users are matched and can create a playlist");
 
 // ---- User Management Endpoints ----
 app.MapPost("/users", Endpoints.CreateUser);
