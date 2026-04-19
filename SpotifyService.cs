@@ -57,10 +57,10 @@ public class SpotifyService
     {
         try
         {
-            var refreshToken = Environment.GetEnvironmentVariable("SPOTIFY_OWNER_REFRESH_TOKEN");
+            var refreshToken = Environment.GetEnvironmentVariable("SpotifyOwnerRefreshToken");
             if (string.IsNullOrEmpty(refreshToken))
             {
-                Console.WriteLine("No SPOTIFY_OWNER_REFRESH_TOKEN in env");
+                Console.WriteLine("No SpotifyOwnerRefreshToken in env");
                 return null;
             }
 
@@ -317,7 +317,7 @@ public class SpotifyService
 
         try
         {
-            Console.WriteLine($"🔍 Searching for artist: {artistName}");
+            Console.WriteLine($"Searching for artist: {artistName}");
 
             var searchRequest = new SearchRequest(SearchRequest.Types.Artist, artistName) { Limit = 20 };
             var searchResponse = await _spotify.Search.Item(searchRequest);
@@ -456,7 +456,7 @@ public class SpotifyService
                         var previewUrl = previewElement.GetString();
                         if (!string.IsNullOrEmpty(previewUrl))
                         {
-                            Console.WriteLine($"     Found Deezer preview: {trackName}");
+                            Console.WriteLine($"  Found Deezer preview: {trackName}");
                             return previewUrl;
                         }
                     }

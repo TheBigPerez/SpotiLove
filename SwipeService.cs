@@ -22,17 +22,31 @@ public class SwipeService
 
         if (existingSwipe != null)
         {
-            existingSwipe.IsLike = isLike; // Update existing swipe
+            existingSwipe.IsLike = isLike;
             existingSwipe.CreatedAt = DateTime.UtcNow;
         }
         else
         {
-            // Add new swipe
+            // Check for a mutual match
+            bool isMatch = false;
+            if (isLike)
+            {
+                var reverseLike = await _db.Likes
+                    .FirstOrDefaultAsync(l => l.FromUserId == toUserId && l.ToUserId == fromUserId && l.IsLike);
+
+                if (reverseLike != null)
+                {
+                    isMatch = true;
+                    reverseLike.IsMatch = true;
+                }
+            }
+
             var like = new Like
             {
                 FromUserId = fromUserId,
                 ToUserId = toUserId,
                 IsLike = isLike,
+                IsMatch = isMatch,
                 CreatedAt = DateTime.UtcNow
             };
             _db.Likes.Add(like);
@@ -86,13 +100,15 @@ public class SwipeService
 
     public async Task<List<UserDto>> GetMatchesAsync(Guid userId)
     {
+        // Use == true so EF generates "= TRUE" instead of bare column reference,
+        // which fails on PostgreSQL when the column is stored as an integer.
         var mutualLikes = await _db.Likes
-            .Where(l => l.FromUserId == userId && l.IsLike)
+            .Where(l => l.FromUserId == userId && l.IsLike == true)
             .Join(_db.Likes,
                 l1 => l1.ToUserId,
                 l2 => l2.FromUserId,
                 (l1, l2) => new { l1, l2 })
-            .Where(x => x.l2.ToUserId == userId && x.l2.IsLike)
+            .Where(x => x.l2.ToUserId == userId && x.l2.IsLike == true)
             .Select(x => x.l1.ToUserId)
             .ToListAsync();
 

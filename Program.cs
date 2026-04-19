@@ -14,23 +14,26 @@ var builder = WebApplication.CreateBuilder(args);
 // ===========================================================
 //    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+// Accept both naming conventions: DATABASE_URL (production/Coolify) or DatabaseURL (legacy .env)
+var connectionString =
+    Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
     if (string.IsNullOrEmpty(connectionString))
-        throw new Exception("DATABASE_URL is missing");
+        throw new Exception("DATABASE_URL environment variable is missing");
 
     var databaseUri = new Uri(connectionString);
     var userInfo = databaseUri.UserInfo.Split(':', 2);
 
+    // Use SSL Prefer so it works both with and without SSL enabled on the server
     var connStr =
         $"Host={databaseUri.Host};" +
         $"Port={databaseUri.Port};" +
         $"Database={databaseUri.LocalPath.TrimStart('/')};" +
         $"Username={userInfo[0]};" +
         $"Password={userInfo[1]};" +
-        $"SSL Mode=Require;" +
+        $"SSL Mode=Prefer;" +
         $"Trust Server Certificate=true";
 
     opt.UseNpgsql(connStr)
@@ -256,7 +259,7 @@ app.MapGet("/spotify/artist-top-tracks"!, async (
         Console.WriteLine($"  Found {tracks.Count} tracks");
         foreach (var track in tracks)
         {
-            Console.WriteLine($"   - {track.Title} | Preview: {(track.PreviewUrl != null ? "✓" : "✗")}");
+            Console.WriteLine($"  - {track.Title} | Preview: {(track.PreviewUrl != null ? "yes" : "no")}");
         }
 
         return Results.Ok(tracks);
@@ -470,49 +473,48 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 
                 try
                 {
-                    var existingPairs = await db.UserSuggestionQueues
-                        .Where(q => q.UserId == currentUserId &&
-                                    candidateIds.Contains(q.SuggestedUserId))
-                        .Select(q => q.SuggestedUserId)
-                        .ToListAsync();
-
-                    var newInserts = batchInserts
-                        .Where(b => !existingPairs.Contains(b.SuggestedUserId))
-                        .ToList();
-
-                    if (newInserts.Any())
+                    // Insert with ON CONFLICT DO NOTHING to avoid duplicate key errors
+                    // caused by concurrent requests or repeated calls for the same user.
+                    int inserted = 0;
+                    foreach (var item in batchInserts)
                     {
-                        db.UserSuggestionQueues.AddRange(newInserts);
-                        await db.SaveChangesAsync();
-                        Console.WriteLine($"  Batch inserted {newInserts.Count} queue items (filtered from {batchInserts.Count})");
-
-                        queueItems.AddRange(newInserts);
-                        queueItems = queueItems
-                            .OrderByDescending(q => q.CompatibilityScore)
-                            .Take(requestedCount * 3)
-                            .ToList();
-
-                        var idsToUpdate = scoredCandidates
-                            .Where(s => s.Score >= 60)
-                            .Take(10)
-                            .Select(s => s.UserId)
-                            .ToList();
-
-                        if (idsToUpdate.Any())
+                        var rows = await db.Database.ExecuteSqlRawAsync(
+                            @"INSERT INTO ""UserSuggestionQueues""
+                              (""UserId"", ""SuggestedUserId"", ""CompatibilityScore"", ""QueuePosition"", ""CreatedAt"")
+                              VALUES ({0}, {1}, {2}, {3}, {4})
+                              ON CONFLICT DO NOTHING",
+                            item.UserId, item.SuggestedUserId,
+                            item.CompatibilityScore, item.QueuePosition, item.CreatedAt);
+                        if (rows > 0)
                         {
-                            _ = Task.Run(() => UpdateQueueScoresInBackground(
-                                currentUserId,
-                                idsToUpdate));
+                            queueItems.Add(item);
+                            inserted++;
                         }
                     }
-                    else
+
+                    Console.WriteLine($"  Inserted {inserted} new queue items (skipped {batchInserts.Count - inserted} duplicates)");
+
+                    queueItems = queueItems
+                        .OrderByDescending(q => q.CompatibilityScore)
+                        .Take(requestedCount * 3)
+                        .ToList();
+
+                    var idsToUpdate = scoredCandidates
+                        .Where(s => s.Score >= 60)
+                        .Take(10)
+                        .Select(s => s.UserId)
+                        .ToList();
+
+                    if (idsToUpdate.Any())
                     {
-                        Console.WriteLine("  All candidates already existed in queue, skipping insert.");
+                        _ = Task.Run(() => UpdateQueueScoresInBackground(
+                            currentUserId,
+                            idsToUpdate));
                     }
                 }
-                catch (DbUpdateException ex)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"  Batch insert conflict: {ex.InnerException?.Message}");
+                    Console.WriteLine($"  Batch insert error: {ex.Message}");
                 }
             }
         }
@@ -611,15 +613,15 @@ app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
             "Tel Aviv, IL", "Tokyo, JP", "Sydney, AU", "Toronto, CA", "Barcelona, ES"
         };
         var bios = new[] {
-            "Music is my life  ",
+            "Music is my life",
             "Looking for someone who shares my taste in music",
             "Concert buddy wanted!",
-            "Vinyl collector and coffee enthusiast ☕",
+            "Vinyl collector and coffee enthusiast",
             "Let's make a playlist together",
-            "Music festival addict 🎪",
+            "Music festival addict",
             "Always discovering new artists",
             "Live music > recorded music",
-            "Spotify wrapped champion 🏆",
+            "Spotify wrapped champion",
             "My headphones are my best friend"
         };
 
@@ -807,10 +809,10 @@ static UserDto ToUserDto(User user) => new()
     SexualOrientation = user.SexualOrientation,
     MusicProfile = user.MusicProfile != null ? new MusicProfileDto
     {
-        FavoriteGenres = user.MusicProfile.FavoriteGenres!,
-        FavoriteArtists = user!.MusicProfile.FavoriteArtists,
-        FavoriteSongs = user.MusicProfile!.FavoriteSongs
-    } : null,
+        FavoriteGenres = user.MusicProfile.FavoriteGenres ?? new(),
+        FavoriteArtists = user.MusicProfile.FavoriteArtists ?? new(),
+        FavoriteSongs = user.MusicProfile.FavoriteSongs ?? new()
+    } : new MusicProfileDto(),
     Images = [.. user.Images.Select(i => i.ImageUrl ?? i.Url)]
 };
 static double CalculateLocalCompatibility(MusicProfile p1, MusicProfile p2, User u1, User u2)
@@ -888,11 +890,13 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var cs = Environment.GetEnvironmentVariable("DATABASE_URL");
+        var cs = Environment.GetEnvironmentVariable("DATABASE_URL")
+                 ?? Environment.GetEnvironmentVariable("DatabaseURL");
 
         if (cs.StartsWith("postgres://") || cs.StartsWith("postgresql://"))
         {
-            optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(cs));
+            optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(cs))
+                          .UseSnakeCaseNamingConvention();
         }
 
         using var db = new AppDbContext(optionsBuilder.Options);
@@ -980,7 +984,7 @@ static string BuildNpgsqlConnectionString(string databaseUrl)
         Username = userInfo[0],
         Password = userInfo[1],
         Database = uri.AbsolutePath.TrimStart('/'),
-        SslMode = Npgsql.SslMode.Require,
+        SslMode = Npgsql.SslMode.Prefer,
     }.ConnectionString;
 }
 //==========EndPoints=========
@@ -1028,7 +1032,7 @@ app.MapGet("/callback", async (
             return Results.Redirect(errorRedirect);
         }
 
-        Console.WriteLine($"📧 Spotify email: {spotifyProfile.Email}");
+        Console.WriteLine($"  Spotify email: {spotifyProfile.Email}");
 
         // Check for existing user
         var existingUser = await db.Users
@@ -1043,7 +1047,7 @@ app.MapGet("/callback", async (
         {
             // NEW USER - Create account
             isNewUser = true;
-            Console.WriteLine($"👤 Creating new user for: {spotifyProfile.Email}");
+            Console.WriteLine($"  Creating new user for: {spotifyProfile.Email}");
 
             var randomPassword = Guid.NewGuid().ToString();
             var hashedPassword = hasher.HashPassword(null!, randomPassword);
@@ -1110,16 +1114,8 @@ app.MapGet("/callback", async (
                 // Create new DbContext for background task
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-                if (connectionString!.StartsWith("postgres://") || connectionString.StartsWith("postgresql://"))
-                {
-                    var uri = new Uri(connectionString);
-                    var userInfo = uri.UserInfo.Split(':', 2);
-
-                    var connStr = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
-
-                    optionsBuilder.UseNpgsql(connStr).UseSnakeCaseNamingConvention();
-                }
-                optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(connectionString));
+                optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(connectionString))
+                              .UseSnakeCaseNamingConvention();
 
                 using var bgDb = new AppDbContext(optionsBuilder.Options);
 
@@ -1200,7 +1196,7 @@ app.MapGet("/callback", async (
 <body>
     <div class='container'>
         <div class='spinner'></div>
-        <h1>✨ {(isNewUser ? "Welcome to SpotiLove!" : "Welcome Back!")}</h1>
+        <h1>{(isNewUser ? "Welcome to SpotiLove!" : "Welcome Back!")}</h1>
         <p>Redirecting you back to the app...</p>
         <p style='font-size: 14px; opacity: 0.7;'>If you're not redirected automatically, click below:</p>
         <a href='{deepLinkUrl}' class='manual-link'>Open SpotiLove</a>
@@ -1608,6 +1604,6 @@ app.MapPost("/swipe/{fromUserId:guid}/like/{toUserId:guid}", SwipeEndpoints.Like
 app.MapPost("/swipe/{fromUserId:guid}/pass/{toUserId:guid}", SwipeEndpoints.PassUser);
 app.MapGet("/matches/{userId:guid}", SwipeEndpoints.GetUserMatches);
 app.MapGet("/swipe/stats/{userId:guid}", SwipeEndpoints.GetSwipeStats);
-Console.WriteLine($"📖 View API documentation at: http://localhost:{port}/swagger");
+Console.WriteLine($"View API documentation at: http://localhost:{port}/swagger");
 app.MapSpotifyPlayer();
 app.Run();

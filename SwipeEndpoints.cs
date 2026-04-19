@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace Spotilove;
 
@@ -63,25 +64,32 @@ public static class SwipeEndpoints
             return Results.Problem(detail: ex.Message, title: "Error fetching matches");
         }
     }
-    public static Task<IResult> GetSwipeStats(SwipeService swipeService, Guid userId)
+    public static async Task<IResult> GetSwipeStats(AppDbContext db, Guid userId)
     {
         try
         {
-            // Get basic stats from the database
-            var stats = new
-            {
-                TotalSwipes = 0,
-                Likes = 0,
-                Passes = 0,
-                Matches = 0,
-                LikeRate = 0.0
-            };
+            var swipes = await db.Likes
+                .Where(l => l.FromUserId == userId)
+                .ToListAsync();
 
-            return Task.FromResult(Results.Ok(stats));
+            var totalSwipes = swipes.Count;
+            var likes = swipes.Count(l => l.IsLike);
+            var passes = totalSwipes - likes;
+            var matches = swipes.Count(l => l.IsMatch);
+            var likeRate = totalSwipes > 0 ? Math.Round((double)likes / totalSwipes * 100, 1) : 0.0;
+
+            return Results.Ok(new
+            {
+                TotalSwipes = totalSwipes,
+                Likes = likes,
+                Passes = passes,
+                Matches = matches,
+                LikeRate = likeRate
+            });
         }
         catch (Exception ex)
         {
-            return Task.FromResult(Results.Problem(detail: ex.Message, title: "Error fetching swipe stats"));
+            return Results.Problem(detail: ex.Message, title: "Error fetching swipe stats");
         }
     }
 
