@@ -15,8 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 //    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
 // Accept both naming conventions: DATABASE_URL (production/Coolify) or DatabaseURL (legacy .env)
-var connectionString =
-    Environment.GetEnvironmentVariable("DATABASE_URL");
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
