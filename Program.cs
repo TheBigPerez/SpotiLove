@@ -12,49 +12,29 @@ DotNetEnv.Env.Load(); // load .env file
 var builder = WebApplication.CreateBuilder(args);
 
 // ===========================================================
-//    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
+//    DATABASE CONFIGURATION (PostgreSQL)
 // ===========================================================
+
 var directConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-    string connStr;
+    var rawStr = directConnStr
+              ?? databaseUrl
+              ?? throw new Exception("No database connection string found");
 
-    if (!string.IsNullOrEmpty(directConnStr))
-    {
-        connStr = directConnStr;
-    }
-    else if (!string.IsNullOrEmpty(databaseUrl))
-    {
-        if (databaseUrl.StartsWith("postgres://") || databaseUrl.StartsWith("postgresql://"))
-        {
-            var uri = new Uri(databaseUrl);
-            var userInfo = uri.UserInfo.Split(':', 2);
+    string connStr = ParseToNpgsqlConnectionString(rawStr);
 
-            var npgsqlBuilder = new Npgsql.NpgsqlConnectionStringBuilder
-            {
-                Host = uri.Host,
-                Port = uri.Port > 0 ? uri.Port : 5432,
-                Database = uri.AbsolutePath.TrimStart('/'),
-                Username = Uri.UnescapeDataString(userInfo[0]),
-                Password = Uri.UnescapeDataString(userInfo[1]),
-                SslMode = Npgsql.SslMode.Disable,
-                TrustServerCertificate = true
-            };
-            connStr = npgsqlBuilder.ConnectionString;
-        }
-        else
-        {
-            connStr = databaseUrl;
-        }
-    }
-    else
-    {
-        throw new Exception("No database connection string found");
-    }
+    var masked = connStr.Length > 20
+        ? connStr[..20] + "...[MASKED]"
+        : connStr;
 
-    opt.UseNpgsql(connStr).UseSnakeCaseNamingConvention();
+    Console.WriteLine($"CONNECTION STRING PREVIEW: {masked}");
+    Console.WriteLine($"CONN STR LENGTH: {connStr.Length}");
+
+    opt.UseNpgsql(connStr)
+       .UseSnakeCaseNamingConvention();
 });
 // ===========================================================
 //   API & SERVICES CONFIGURATION
@@ -127,8 +107,7 @@ app.UseCors("AllowAll");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
-
+    db.Database.EnsureCreatedAsync();
 }
 
 // ===========================================================
@@ -991,8 +970,34 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
     }
 }
 
+static string ParseToNpgsqlConnectionString(string raw)
+{
+    // Already a key=value connection string
+    if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
+        return raw;
+
+    // It's a URL — parse it safely into individual properties
+    var uri = new Uri(raw);
+    var userInfo = uri.UserInfo.Split(':', 2);
+
+    // Use NpgsqlConnectionStringBuilder with PROPERTIES (not constructor string)
+    // so it handles all special chars automatically
+    var b = new Npgsql.NpgsqlConnectionStringBuilder();
+    b.Host = uri.Host;
+    b.Port = uri.Port > 0 ? uri.Port : 5432;
+    b.Database = uri.AbsolutePath.TrimStart('/');
+    b.Username = Uri.UnescapeDataString(userInfo[0]);
+    b.Password = Uri.UnescapeDataString(userInfo[1]);
+    b.SslMode = Npgsql.SslMode.Disable;
+    b.TrustServerCertificate = true;
+
+    Console.WriteLine($"Parsed connection → Host={b.Host}, Port={b.Port}, DB={b.Database}, User={b.Username}");
+    return b.ConnectionString;
+}
+
 static string BuildNpgsqlConnectionString(string databaseUrl)
 {
+
     var uri = new Uri(databaseUrl);
     var userInfo = uri.UserInfo.Split(':', 2);
 
