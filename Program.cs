@@ -92,8 +92,8 @@ using (var scope = app.Services.CreateScope())
 
     if (isPostgres)
     {
-        // PostgreSQL: use proper migrations
         await db.Database.MigrateAsync();
+        await db.Database.EnsureCreatedAsync();
     }
     else
     {
@@ -816,9 +816,7 @@ static UserDto ToUserDto(User user) => new()
 };
 static double CalculateLocalCompatibility(MusicProfile p1, MusicProfile p2, User u1, User u2)
 {
-    // =======================
     // 1. Music scoring
-    // =======================
     double genreScore = JaccardSimilarity(p1.FavoriteGenres, p2.FavoriteGenres);
     double artistScore = JaccardSimilarity(p1.FavoriteArtists, p2.FavoriteArtists);
     double songScore = JaccardSimilarity(p1.FavoriteSongs, p2.FavoriteSongs);
@@ -826,14 +824,10 @@ static double CalculateLocalCompatibility(MusicProfile p1, MusicProfile p2, User
     // Weighted music score (total 100)
     double musicScore = genreScore * 0.3 + artistScore * 0.4 + songScore * 0.3;
 
-    // =======================
     // 2. Preference scoring
-    // =======================
     double preferenceScore = CalculatePreferenceCompatibility(u1, u2);
 
-    // =======================
     // 3. Combine music (80%) + preference (20%)
-    // =======================
     double totalScore = (musicScore * 0.8) + (preferenceScore * 0.2);
 
     return Math.Round(totalScore, 2);
@@ -854,9 +848,7 @@ static bool IsAttractedTo(User attractor, string attractedToGender)
     return orientation == "both" || orientation == gender;
 }
 
-// =======================
 // Preference compatibility
-// =======================
 static double CalculatePreferenceCompatibility(User u1, User u2)
 {
     bool u1_Attracted_To_u2 = IsAttractedTo(u1, u2.Gender);
@@ -865,9 +857,7 @@ static double CalculatePreferenceCompatibility(User u1, User u2)
     return (u1_Attracted_To_u2 && u2_Attracted_To_u1) ? 100.0 : 0.0;
 }
 
-// =======================
 // Jaccard similarity for lists
-// =======================
 static double JaccardSimilarity(List<string>? list1, List<string>? list2)
 {
     if (list1 == null || list2 == null || !list1.Any() || !list2.Any()) return 0;
