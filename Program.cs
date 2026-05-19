@@ -27,19 +27,22 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     }
     else if (!string.IsNullOrEmpty(databaseUrl))
     {
-        // Handle both postgres:// URL format and plain connection strings
         if (databaseUrl.StartsWith("postgres://") || databaseUrl.StartsWith("postgresql://"))
         {
             var uri = new Uri(databaseUrl);
             var userInfo = uri.UserInfo.Split(':', 2);
-            connStr =
-                $"Host={uri.Host};" +
-                $"Port={(uri.Port > 0 ? uri.Port : 5432)};" +
-                $"Database={uri.AbsolutePath.TrimStart('/')};" +
-                $"Username={Uri.UnescapeDataString(userInfo[0])};" +
-                $"Password={Uri.UnescapeDataString(userInfo[1])};" +
-                $"SSL Mode=Disable;" +
-                $"Trust Server Certificate=true";
+
+            var npgsqlBuilder = new Npgsql.NpgsqlConnectionStringBuilder
+            {
+                Host = uri.Host,
+                Port = uri.Port > 0 ? uri.Port : 5432,
+                Database = uri.AbsolutePath.TrimStart('/'),
+                Username = Uri.UnescapeDataString(userInfo[0]),
+                Password = Uri.UnescapeDataString(userInfo[1]),
+                SslMode = Npgsql.SslMode.Disable,
+                TrustServerCertificate = true
+            };
+            connStr = npgsqlBuilder.ConnectionString;
         }
         else
         {
