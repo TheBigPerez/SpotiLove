@@ -71,35 +71,36 @@ app.Use(async (context, next) =>
         // Truncate to avoid logging huge base64 images
         Console.WriteLine($">>> Body: {body[..Math.Min(300, body.Length)]}");
     }
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        int retries = 5;
-        while (retries > 0)
-        {
-            try
-            {
-                Console.WriteLine("Attempting database connection...");
-                await db.Database.EnsureCreatedAsync();
-                Console.WriteLine("Database ready!");
-                break;
-            }
-            catch (Exception ex)
-            {
-                retries--;
-                Console.WriteLine($"DB not ready, retrying in 3s... ({retries} left). Error: {ex.Message}");
-                if (retries == 0) throw;
-                await Task.Delay(3000);
-            }
-        }
-    }
 
     await next();
 
     Console.WriteLine($"<<< {context.Response.StatusCode} {context.Request.Path}");
 });
 app.UseCors("AllowAll");
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    int retries = 5;
+    while (retries > 0)
+    {
+        try
+        {
+            Console.WriteLine("Attempting database connection...");
+            await db.Database.EnsureCreatedAsync();
+            Console.WriteLine("Database ready!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries--;
+            Console.WriteLine($"DB not ready, retrying in 3s... ({retries} left). Error: {ex.Message}");
+            if (retries == 0) throw;
+            await Task.Delay(3000);
+        }
+    }
+}
 
 // ===========================================================
 //   DATABASE MIGRATION
@@ -972,16 +973,15 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
 static string ParseToNpgsqlConnectionString(string raw)
 {
-    // Already a key=value connection string
+    // Strip any wrapping quotes the platform may have added
+    raw = raw.Trim().Trim('"').Trim('\'');
+
     if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
         return raw;
 
-    // It's a URL — parse it safely into individual properties
     var uri = new Uri(raw);
     var userInfo = uri.UserInfo.Split(':', 2);
 
-    // Use NpgsqlConnectionStringBuilder with PROPERTIES (not constructor string)
-    // so it handles all special chars automatically
     var b = new Npgsql.NpgsqlConnectionStringBuilder();
     b.Host = uri.Host;
     b.Port = uri.Port > 0 ? uri.Port : 5432;
@@ -991,10 +991,8 @@ static string ParseToNpgsqlConnectionString(string raw)
     b.SslMode = Npgsql.SslMode.Disable;
     b.TrustServerCertificate = true;
 
-    Console.WriteLine($"Parsed connection → Host={b.Host}, Port={b.Port}, DB={b.Database}, User={b.Username}");
     return b.ConnectionString;
 }
-
 static string BuildNpgsqlConnectionString(string databaseUrl)
 {
 
