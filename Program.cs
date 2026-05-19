@@ -973,10 +973,17 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
 static string ParseToNpgsqlConnectionString(string raw)
 {
-    // Strip wrapping quotes FIRST, before any other logic
-    raw = raw.Trim().Trim('"').Trim('\'');
+    // The env var value is stored as \"Host=...\" (with literal backslash-quote)
+    // Strip all combinations of wrapping junk
+    raw = raw.Trim()
+             .Replace("\\\"", "")   // remove \" sequences
+             .Trim('"')             // remove any remaining plain quotes
+             .Trim('\'')            // remove single quotes
+             .Trim('\\')            // remove any remaining backslashes
+             .Trim();               // final trim
 
-    // Now check what format we have
+    Console.WriteLine($"CLEANED STRING STARTS WITH: [{raw[..Math.Min(20, raw.Length)]}]");
+
     if (raw.StartsWith("postgres://") || raw.StartsWith("postgresql://"))
     {
         var uri = new Uri(raw);
@@ -991,12 +998,10 @@ static string ParseToNpgsqlConnectionString(string raw)
         b.SslMode = Npgsql.SslMode.Disable;
         b.TrustServerCertificate = true;
 
-        Console.WriteLine($"Parsed URL → Host={b.Host}, Port={b.Port}, DB={b.Database}");
         return b.ConnectionString;
     }
 
-    // Key=value format — already stripped of quotes, return as-is
-    Console.WriteLine($"Using key=value connection string directly");
+    // Key=value format
     return raw;
 }
 static string BuildNpgsqlConnectionString(string databaseUrl)
