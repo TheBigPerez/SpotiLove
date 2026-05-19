@@ -973,25 +973,31 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
 
 static string ParseToNpgsqlConnectionString(string raw)
 {
-    // Strip any wrapping quotes the platform may have added
+    // Strip wrapping quotes FIRST, before any other logic
     raw = raw.Trim().Trim('"').Trim('\'');
 
-    if (!raw.StartsWith("postgres://") && !raw.StartsWith("postgresql://"))
-        return raw;
+    // Now check what format we have
+    if (raw.StartsWith("postgres://") || raw.StartsWith("postgresql://"))
+    {
+        var uri = new Uri(raw);
+        var userInfo = uri.UserInfo.Split(':', 2);
 
-    var uri = new Uri(raw);
-    var userInfo = uri.UserInfo.Split(':', 2);
+        var b = new Npgsql.NpgsqlConnectionStringBuilder();
+        b.Host = uri.Host;
+        b.Port = uri.Port > 0 ? uri.Port : 5432;
+        b.Database = uri.AbsolutePath.TrimStart('/');
+        b.Username = Uri.UnescapeDataString(userInfo[0]);
+        b.Password = Uri.UnescapeDataString(userInfo[1]);
+        b.SslMode = Npgsql.SslMode.Disable;
+        b.TrustServerCertificate = true;
 
-    var b = new Npgsql.NpgsqlConnectionStringBuilder();
-    b.Host = uri.Host;
-    b.Port = uri.Port > 0 ? uri.Port : 5432;
-    b.Database = uri.AbsolutePath.TrimStart('/');
-    b.Username = Uri.UnescapeDataString(userInfo[0]);
-    b.Password = Uri.UnescapeDataString(userInfo[1]);
-    b.SslMode = Npgsql.SslMode.Disable;
-    b.TrustServerCertificate = true;
+        Console.WriteLine($"Parsed URL → Host={b.Host}, Port={b.Port}, DB={b.Database}");
+        return b.ConnectionString;
+    }
 
-    return b.ConnectionString;
+    // Key=value format — already stripped of quotes, return as-is
+    Console.WriteLine($"Using key=value connection string directly");
+    return raw;
 }
 static string BuildNpgsqlConnectionString(string databaseUrl)
 {
