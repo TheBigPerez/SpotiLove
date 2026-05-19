@@ -14,31 +14,41 @@ var builder = WebApplication.CreateBuilder(args);
 // ===========================================================
 //    DATABASE CONFIGURATION (supports SQLite + PostgreSQL)
 // ===========================================================
-// Accept both naming conventions: DATABASE_URL (production/Coolify) or DatabaseURL (legacy .env)
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+var directConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-    if (string.IsNullOrEmpty(connectionString))
-        throw new Exception("DATABASE_URL environment variable is missing");
+    string connStr;
 
-    var databaseUri = new Uri(connectionString);
-    var userInfo = databaseUri.UserInfo.Split(':', 2);
-
-    // Use SSL Prefer so it works both with and without SSL enabled on the server
-    var connStr =
-        $"Host={databaseUri.Host};" +
-        $"Port={databaseUri.Port};" +
-        $"Database={databaseUri.LocalPath.TrimStart('/')};" +
-        $"Username={userInfo[0]};" +
-        $"Password={userInfo[1]};" +
-        $"SSL Mode=Prefer;" +
-        $"Trust Server Certificate=true";
+    if (!string.IsNullOrEmpty(directConnStr))
+    {
+        // Use the direct connection string (preferred)
+        connStr = directConnStr;
+    }
+    else if (!string.IsNullOrEmpty(databaseUrl))
+    {
+        // Fall back to parsing the URL
+        var uri = new Uri(databaseUrl);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        connStr =
+            $"Host={uri.Host};" +
+            $"Port={uri.Port};" +
+            $"Database={uri.AbsolutePath.TrimStart('/')};" +
+            $"Username={userInfo[0]};" +
+            $"Password={userInfo[1]};" +
+            $"SSL Mode=Require;" +
+            $"Trust Server Certificate=true";
+    }
+    else
+    {
+        throw new Exception("No database connection string found");
+    }
 
     opt.UseNpgsql(connStr)
        .UseSnakeCaseNamingConvention();
 });
-
 // ===========================================================
 //   API & SERVICES CONFIGURATION
 // ===========================================================
@@ -88,7 +98,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    var isPostgres = connectionString.StartsWith("postgres://") || connectionString.StartsWith("postgresql://");
+    var isPostgres = databaseUrl.StartsWith("postgres://") || databaseUrl.StartsWith("postgresql://");
 
     if (isPostgres)
     {
@@ -1077,7 +1087,7 @@ app.MapGet("/callback", async (
         var token = Guid.NewGuid().ToString();
 
         // Get connection string for background task
-        var connectionString = db.Database.GetConnectionString();
+        var databaseUrl = db.Database.GetConnectionString();
         var userId = user.Id;
 
         // Build deep link
@@ -1103,7 +1113,7 @@ app.MapGet("/callback", async (
                 // Create new DbContext for background task
                 var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-                optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(connectionString))
+                optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(databaseUrl))
                               .UseSnakeCaseNamingConvention();
 
                 using var bgDb = new AppDbContext(optionsBuilder.Options);
