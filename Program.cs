@@ -36,9 +36,9 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
                 $"Host={uri.Host};" +
                 $"Port={(uri.Port > 0 ? uri.Port : 5432)};" +
                 $"Database={uri.AbsolutePath.TrimStart('/')};" +
-                $"Username={userInfo[0]};" +
-                $"Password={userInfo[1]};" +
-                $"SSL Mode=Disable;" +           // No SSL needed inside Docker network
+                $"Username={Uri.UnescapeDataString(userInfo[0])};" +
+                $"Password={Uri.UnescapeDataString(userInfo[1])};" +
+                $"SSL Mode=Disable;" +
                 $"Trust Server Certificate=true";
         }
         else
@@ -124,25 +124,8 @@ app.UseCors("AllowAll");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.EnsureCreatedAsync();
 
-    int retries = 5;
-    while (retries > 0)
-    {
-        try
-        {
-            Console.WriteLine("Attempting database connection...");
-            await db.Database.EnsureCreatedAsync();
-            Console.WriteLine("Database ready!");
-            break;
-        }
-        catch (Exception ex)
-        {
-            retries--;
-            Console.WriteLine($"DB not ready, retrying in 3s... ({retries} left). Error: {ex.Message}");
-            if (retries == 0) throw;
-            await Task.Delay(3000);
-        }
-    }
 }
 
 // ===========================================================
@@ -1014,8 +997,8 @@ static string BuildNpgsqlConnectionString(string databaseUrl)
     {
         Host = uri.Host,
         Port = uri.Port,
-        Username = userInfo[0],
-        Password = userInfo[1],
+        Username = Uri.UnescapeDataString(userInfo[0]),  // ← fix
+        Password = Uri.UnescapeDataString(userInfo[1]),  // ← fix
         Database = uri.AbsolutePath.TrimStart('/'),
         SslMode = Npgsql.SslMode.Prefer,
     }.ConnectionString;
