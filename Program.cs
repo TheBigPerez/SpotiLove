@@ -17,37 +17,41 @@ var builder = WebApplication.CreateBuilder(args);
 var directConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
-
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
     string connStr;
 
     if (!string.IsNullOrEmpty(directConnStr))
     {
-        // Use the direct connection string (preferred)
         connStr = directConnStr;
     }
     else if (!string.IsNullOrEmpty(databaseUrl))
     {
-        // Fall back to parsing the URL
-        var uri = new Uri(databaseUrl);
-        var userInfo = uri.UserInfo.Split(':', 2);
-        connStr =
-            $"Host={uri.Host};" +
-            $"Port={uri.Port};" +
-            $"Database={uri.AbsolutePath.TrimStart('/')};" +
-            $"Username={userInfo[0]};" +
-            $"Password={userInfo[1]};" +
-            $"SSL Mode=Require;" +
-            $"Trust Server Certificate=true";
+        // Handle both postgres:// URL format and plain connection strings
+        if (databaseUrl.StartsWith("postgres://") || databaseUrl.StartsWith("postgresql://"))
+        {
+            var uri = new Uri(databaseUrl);
+            var userInfo = uri.UserInfo.Split(':', 2);
+            connStr =
+                $"Host={uri.Host};" +
+                $"Port={(uri.Port > 0 ? uri.Port : 5432)};" +
+                $"Database={uri.AbsolutePath.TrimStart('/')};" +
+                $"Username={userInfo[0]};" +
+                $"Password={userInfo[1]};" +
+                $"SSL Mode=Disable;" +           // No SSL needed inside Docker network
+                $"Trust Server Certificate=true";
+        }
+        else
+        {
+            connStr = databaseUrl;
+        }
     }
     else
     {
         throw new Exception("No database connection string found");
     }
 
-    opt.UseNpgsql(connStr)
-       .UseSnakeCaseNamingConvention();
+    opt.UseNpgsql(connStr).UseSnakeCaseNamingConvention();
 });
 // ===========================================================
 //   API & SERVICES CONFIGURATION
@@ -84,6 +88,29 @@ app.Use(async (context, next) =>
         // Truncate to avoid logging huge base64 images
         Console.WriteLine($">>> Body: {body[..Math.Min(300, body.Length)]}");
     }
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        int retries = 5;
+        while (retries > 0)
+        {
+            try
+            {
+                Console.WriteLine("Attempting database connection...");
+                await db.Database.EnsureCreatedAsync();
+                Console.WriteLine("Database ready!");
+                break;
+            }
+            catch (Exception ex)
+            {
+                retries--;
+                Console.WriteLine($"DB not ready, retrying in 3s... ({retries} left). Error: {ex.Message}");
+                if (retries == 0) throw;
+                await Task.Delay(3000);
+            }
+        }
+    }
 
     await next();
 
@@ -92,22 +119,29 @@ app.Use(async (context, next) =>
 app.UseCors("AllowAll");
 
 // ===========================================================
-//   DATABASE MIGRATION + SEEDING
+//   DATABASE MIGRATION
 // ===========================================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    var isPostgres = databaseUrl.StartsWith("postgres://") || databaseUrl.StartsWith("postgresql://");
-
-    if (isPostgres)
+    int retries = 5;
+    while (retries > 0)
     {
-        await db.Database.MigrateAsync();
-        await db.Database.EnsureCreatedAsync();
-    }
-    else
-    {
-        await db.Database.EnsureCreatedAsync();
+        try
+        {
+            Console.WriteLine("Attempting database connection...");
+            await db.Database.EnsureCreatedAsync();
+            Console.WriteLine("Database ready!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries--;
+            Console.WriteLine($"DB not ready, retrying in 3s... ({retries} left). Error: {ex.Message}");
+            if (retries == 0) throw;
+            await Task.Delay(3000);
+        }
     }
 }
 
