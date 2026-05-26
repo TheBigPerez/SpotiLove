@@ -15,14 +15,13 @@ var builder = WebApplication.CreateBuilder(args);
 //    DATABASE CONFIGURATION (PostgreSQL)
 // ===========================================================
 
-var directConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
+//var directConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-    var rawStr = directConnStr
-              ?? databaseUrl
-              ?? throw new Exception("No database connection string found");
+    var rawStr = //directConnStr ?? 
+                databaseUrl ?? throw new Exception("No database connection string found");
 
     string connStr = ParseToNpgsqlConnectionString(rawStr);
 
