@@ -5,7 +5,6 @@ namespace Spotilove;
 
 public class DesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
-    [Obsolete]
     public AppDbContext CreateDbContext(string[] args)
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>();

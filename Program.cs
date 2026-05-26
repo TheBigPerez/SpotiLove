@@ -111,28 +111,8 @@ using (var scope = app.Services.CreateScope())
     {
         try
         {
-            Console.WriteLine("Attempting database connection...");
-            bool created = await db.Database.EnsureCreatedAsync();
-            Console.WriteLine($"EnsureCreated returned: {created}");
-
-            if (!created)
-            {
-                // Database existed — verify tables are actually there
-                try
-                {
-                    await db.Users.CountAsync();
-                    Console.WriteLine("Tables verified OK");
-                }
-                catch
-                {
-                    // Tables missing despite DB existing — wipe and recreate
-                    Console.WriteLine("Tables missing, recreating schema...");
-                    await db.Database.EnsureDeletedAsync();
-                    await db.Database.EnsureCreatedAsync();
-                    Console.WriteLine("Schema recreated");
-                }
-            }
-
+            Console.WriteLine("Applying migrations...");
+            await db.Database.MigrateAsync();
             var userCount = await db.Users.CountAsync();
             Console.WriteLine($"Database ready! ({userCount} users)");
             break;
