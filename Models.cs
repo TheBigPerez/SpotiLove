@@ -7,7 +7,6 @@ namespace Spotilove;
 
 public class User
 {
-    [Key]
     [Column(TypeName = "uuid")]  // Explicitly set PostgreSQL type
     public Guid Id { get; set; } = Guid.NewGuid();
 
