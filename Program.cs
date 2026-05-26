@@ -25,9 +25,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 
     string connStr = ParseToNpgsqlConnectionString(rawStr);
 
-    var masked = connStr.Length > 20
-        ? connStr[..20] + "...[MASKED]"
-        : connStr;
+    var masked = connStr;
 
     Console.WriteLine($"CONNECTION STRING PREVIEW: {masked}");
     Console.WriteLine($"CONN STR LENGTH: {connStr.Length}");
