@@ -105,11 +105,6 @@ using (var scope = app.Services.CreateScope())
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
-}
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
     int retries = 10;
     while (retries > 0)
@@ -118,11 +113,28 @@ using (var scope = app.Services.CreateScope())
         {
             Console.WriteLine("Attempting database connection...");
             bool created = await db.Database.EnsureCreatedAsync();
-            Console.WriteLine($"Database ready! (tables created: {created})");
+            Console.WriteLine($"EnsureCreated returned: {created}");
 
-            // Verify tables actually exist
+            if (!created)
+            {
+                // Database existed — verify tables are actually there
+                try
+                {
+                    await db.Users.CountAsync();
+                    Console.WriteLine("Tables verified OK");
+                }
+                catch
+                {
+                    // Tables missing despite DB existing — wipe and recreate
+                    Console.WriteLine("Tables missing, recreating schema...");
+                    await db.Database.EnsureDeletedAsync();
+                    await db.Database.EnsureCreatedAsync();
+                    Console.WriteLine("Schema recreated");
+                }
+            }
+
             var userCount = await db.Users.CountAsync();
-            Console.WriteLine($"Users table OK, {userCount} rows");
+            Console.WriteLine($"Database ready! ({userCount} users)");
             break;
         }
         catch (Exception ex)
@@ -134,7 +146,6 @@ using (var scope = app.Services.CreateScope())
         }
     }
 }
-
 // ===========================================================
 //   DEVELOPMENT TOOLS
 // ===========================================================
