@@ -74,10 +74,10 @@ public class UserImage
 
 public class Like
 {
-    [Key, Column(Order = 0, TypeName = "uuid")]
+    [Key, Column(TypeName = "uuid")]
     public Guid FromUserId { get; set; }
 
-    [Key, Column(Order = 1, TypeName = "uuid")]
+    [Key, Column(TypeName = "uuid")]
     public Guid ToUserId { get; set; }
 
     public bool IsLike { get; set; }
@@ -95,10 +95,10 @@ public class Like
 
 public class UserSuggestionQueue
 {
-    [Key, Column(Order = 0, TypeName = "uuid")]
+    [Key, Column(TypeName = "uuid")]
     public Guid UserId { get; set; }
 
-    [Key, Column(Order = 1, TypeName = "uuid")]
+    [Key, Column(TypeName = "uuid")]
     public Guid SuggestedUserId { get; set; }
 
     public double CompatibilityScore { get; set; }

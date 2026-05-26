@@ -107,6 +107,33 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
 }
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    int retries = 10;
+    while (retries > 0)
+    {
+        try
+        {
+            Console.WriteLine("Attempting database connection...");
+            bool created = await db.Database.EnsureCreatedAsync();
+            Console.WriteLine($"Database ready! (tables created: {created})");
+
+            // Verify tables actually exist
+            var userCount = await db.Users.CountAsync();
+            Console.WriteLine($"Users table OK, {userCount} rows");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries--;
+            Console.WriteLine($"DB not ready, retrying in 5s... ({retries} left). Error: {ex.Message}");
+            if (retries == 0) throw;
+            await Task.Delay(5000);
+        }
+    }
+}
 
 // ===========================================================
 //   DEVELOPMENT TOOLS
