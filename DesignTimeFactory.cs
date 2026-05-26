@@ -9,26 +9,30 @@ public class DesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>();
 
-        // Try direct connection string first
         var connStr = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection");
 
         if (string.IsNullOrEmpty(connStr))
         {
-            // Fall back to URL parsing
             var url = Environment.GetEnvironmentVariable("DATABASE_URL")
-                      ?? throw new Exception("No database connection configured");
+                      ?? "Host=localhost;Port=5432;Database=spotilove_dev;Username=postgres;Password=postgres";
 
-            var uri = new Uri(url);
-            var userInfo = uri.UserInfo.Split(':', 2);
-
-            connStr =
-                $"Host={uri.Host};" +
-                $"Port={uri.Port};" +
-                $"Database={uri.AbsolutePath.TrimStart('/')};" +
-                $"Username={userInfo[0]};" +
-                $"Password={userInfo[1]};" +
-                $"SSL Mode=Require;" +
-                $"Trust Server Certificate=true";
+            if (!url.StartsWith("postgres://") && !url.StartsWith("postgresql://"))
+            {
+                connStr = url;
+            }
+            else
+            {
+                var uri = new Uri(url);
+                var userInfo = uri.UserInfo.Split(':', 2);
+                connStr =
+                    $"Host={uri.Host};" +
+                    $"Port={uri.Port};" +
+                    $"Database={uri.AbsolutePath.TrimStart('/')};" +
+                    $"Username={Uri.UnescapeDataString(userInfo[0])};" +
+                    $"Password={Uri.UnescapeDataString(userInfo[1])};" +
+                    $"SSL Mode=Require;" +
+                    $"Trust Server Certificate=true";
+            }
         }
 
         builder.UseNpgsql(connStr)
