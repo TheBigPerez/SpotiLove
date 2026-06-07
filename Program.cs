@@ -159,6 +159,36 @@ app.MapGet("/", () => Results.Ok(new
         swagger = "/swagger"
     }
 }));
+// Image proxy — fetches Spotify CDN images with proper headers
+app.MapGet("/proxy-image", async (string url, HttpContext context) =>
+{
+    if (string.IsNullOrWhiteSpace(url))
+        return Results.BadRequest("url parameter is required");
+
+    // Only allow Spotify CDN images
+    if (!url.StartsWith("https://i.scdn.co/") &&
+        !url.StartsWith("https://mosaic.scdn.co/"))
+        return Results.BadRequest("Only Spotify CDN images are allowed");
+
+    try
+    {
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Add("User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        httpClient.DefaultRequestHeaders.Add("Referer", "https://open.spotify.com/");
+        httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+        var imageBytes = await httpClient.GetByteArrayAsync(url);
+        return Results.File(imageBytes, "image/jpeg");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Image proxy error: {ex.Message}");
+        return Results.NotFound();
+    }
+})
+.WithName("ProxyImage")
+.WithSummary("Proxy Spotify CDN images to bypass CORS/UA restrictions");
 // Get popular artists for selection
 app.MapGet("/spotify/popular-artists", async (SpotifyService spotifyService, int limit = 20) =>
 {
@@ -415,28 +445,23 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
         }
 
         //   Fetch swiped, queued, and total users in parallel
-        var swipedTask = db.Likes
+        var swipedUserIds = (await db.Likes
             .Where(l => l.FromUserId == currentUserId)
             .AsNoTracking()
             .Select(l => l.ToUserId)
-            .ToListAsync();
+            .ToListAsync())
+            .ToHashSet();
 
-        var queueTask = db.UserSuggestionQueues
+        var queueItems = await db.UserSuggestionQueues
             .Where(q => q.UserId == currentUserId && q.CompatibilityScore >= 50)
             .OrderByDescending(q => q.CompatibilityScore)
             .ThenBy(q => q.QueuePosition)
             .AsNoTracking()
             .ToListAsync();
 
-        var totalUsersTask = db.Users
+        var totalAvailable = await db.Users
             .Where(u => u.Id != currentUserId && u.MusicProfile != null)
             .CountAsync();
-
-        await Task.WhenAll(swipedTask, queueTask, totalUsersTask);
-
-        var swipedUserIds = swipedTask.Result.ToHashSet();
-        var queueItems = queueTask.Result;
-        var totalAvailable = totalUsersTask.Result;
 
         Console.WriteLine($"  User {currentUserId}: {queueItems.Count} queued, {swipedUserIds.Count} swiped, {totalAvailable} total");
 

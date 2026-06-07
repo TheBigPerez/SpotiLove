@@ -10,7 +10,8 @@ namespace Spotilove;
 
 public class SpotifyService
 {
-    private SpotifyClient? _spotify;
+    private SpotifyClient? _spotify;        // user-authenticated client (OAuth)
+    private SpotifyClient? _appSpotify;     // app-level client (client credentials), auto-refreshing
     private readonly string _clientId;
     private readonly string _clientSecret;
     private readonly string _redirectUri;
@@ -91,8 +92,16 @@ public class SpotifyService
             new AuthorizationCodeTokenRequest(_clientId, _clientSecret, code, new Uri(_redirectUri))
         );
         _accessToken = tokenResponse.AccessToken;
-        _spotify = new SpotifyClient(tokenResponse.AccessToken);
         _refreshToken = tokenResponse.RefreshToken;
+
+        // AuthorizationCodeAuthenticator refreshes the user's access token
+        // automatically using the refresh token, so user calls no longer 401
+        // after an hour and RefreshAccessTokenAsync is no longer needed.
+        var config = SpotifyClientConfig
+            .CreateDefault()
+            .WithAuthenticator(new AuthorizationCodeAuthenticator(_clientId, _clientSecret, tokenResponse));
+
+        _spotify = new SpotifyClient(config);
     }
 
     public async Task RefreshAccessTokenAsync()
@@ -117,17 +126,22 @@ public class SpotifyService
         // The client is already authenticated by the time this is called in the route.
         return _spotify;
     }
-    public async Task EnsureClientIsAuthenticatedAsync()
+    public Task EnsureClientIsAuthenticatedAsync()
     {
-        // If we already have a user-authenticated client, we're good.
-        if (_spotify != null) return;
+        // Build the app-level (client-credentials) client once.
+        // ClientCredentialsAuthenticator transparently fetches a token and
+        // refreshes it whenever it expires, so this client never goes stale.
+        // (This is what fixes the "access token expired" errors.)
+        if (_appSpotify == null)
+        {
+            var config = SpotifyClientConfig
+                .CreateDefault()
+                .WithAuthenticator(new ClientCredentialsAuthenticator(_clientId, _clientSecret));
 
-        // Otherwise, authenticate using client credentials (app-level authentication).
-        var config = SpotifyClientConfig.CreateDefault();
-        var request = new ClientCredentialsRequest(_clientId, _clientSecret);
-        var response = await new OAuthClient(config).RequestToken(request);
+            _appSpotify = new SpotifyClient(config);
+        }
 
-        _spotify = new SpotifyClient(response.AccessToken);
+        return Task.CompletedTask;
     }
 
     // ---------------------------
@@ -205,10 +219,10 @@ public class SpotifyService
     public async Task<List<SpotifySongDto>> SearchSongsAsync(string query, int limit = 20)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null) throw new Exception("Could not authenticate with Spotify");
+        if (_appSpotify == null) throw new Exception("Could not authenticate with Spotify");
 
         var searchRequest = new SearchRequest(SearchRequest.Types.Track, query) { Limit = limit };
-        var searchResponse = await _spotify.Search.Item(searchRequest);
+        var searchResponse = await _appSpotify.Search.Item(searchRequest);
 
         var results = new List<SpotifySongDto>();
         if (searchResponse.Tracks?.Items == null) return results;
@@ -241,10 +255,10 @@ public class SpotifyService
     public async Task<List<ArtistInfo>> SearchArtistsAsync(string query, int limit = 10)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null) throw new Exception("Could not authenticate with Spotify");
+        if (_appSpotify == null) throw new Exception("Could not authenticate with Spotify");
 
         var searchRequest = new SearchRequest(SearchRequest.Types.Artist, query) { Limit = limit };
-        var searchResponse = await _spotify.Search.Item(searchRequest);
+        var searchResponse = await _appSpotify.Search.Item(searchRequest);
 
         return searchResponse.Artists.Items?
             .Select(a => new ArtistInfo(a.Name, a.Images.FirstOrDefault()?.Url))
@@ -254,73 +268,60 @@ public class SpotifyService
     public async Task<List<ArtistInfo>> GetPopularArtistsAsync(int limit = 20)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null)
+        if (_appSpotify == null)
             throw new Exception("Could not authenticate with Spotify");
 
-        try
+        // Spotify deprecated Browse / Get Featured Playlists (and Spotify-owned
+        // editorial playlists) for apps created after 2024-11-27 — those endpoints
+        // now return 404/403. We discover popular artists via the Search endpoint
+        // (still available) and rank them by Spotify's own popularity score.
+        var seedTerms = new[]
         {
-            // Get featured playlists (more reliable than hardcoded IDs)
-            var featuredPlaylists = await _spotify.Browse.GetFeaturedPlaylists(new FeaturedPlaylistsRequest
-            {
-                Limit = 1,
-                Country = "US"
-            });
+            "pop", "hip hop", "rock", "rap", "r&b", "indie",
+            "electronic", "latin", "k-pop", "dance", "country", "metal"
+        };
 
-            if (featuredPlaylists.Playlists?.Items == null || !featuredPlaylists.Playlists.Items.Any())
+        var artistsById = new Dictionary<string, FullArtist>();
+
+        foreach (var term in seedTerms)
+        {
+            try
             {
-                Console.WriteLine("No featured playlists found, falling back to search");
-                return await GetPopularArtistsFromSearchAsync(limit);
+                var searchRequest = new SearchRequest(SearchRequest.Types.Artist, term) { Limit = 20 };
+                var searchResponse = await _appSpotify.Search.Item(searchRequest);
+
+                foreach (var artist in searchResponse.Artists?.Items ?? new List<FullArtist>())
+                {
+                    if (!string.IsNullOrEmpty(artist.Id))
+                        artistsById[artist.Id] = artist; // dedupe by id
+                }
+
+                await Task.Delay(80); // gentle on rate limits
             }
-
-            var firstPlaylist = featuredPlaylists.Playlists.Items.First();
-            var playlist = await _spotify.Playlists.Get(firstPlaylist.Id!);
-
-            // Extract unique artist IDs
-            var artistIds = playlist.Tracks?.Items?
-                .SelectMany(item => item.Track is FullTrack track ? track.Artists : Enumerable.Empty<SimpleArtist>())
-                .Where(artist => artist != null && !string.IsNullOrEmpty(artist.Id))
-                .Select(artist => artist.Id)
-                .Distinct()
-                .Take(limit)
-                .ToList();
-
-            if (artistIds == null || !artistIds.Any())
+            catch (Exception ex)
             {
-                return await GetPopularArtistsFromSearchAsync(limit);
+                Console.WriteLine($"  Popular-artist search failed for '{term}': {ex.Message}");
             }
+        }
 
-            // Fetch all artist details concurrently
-            var artistTasks = artistIds.Select(id => _spotify.Artists.Get(id)).ToList();
-            var fullArtists = await Task.WhenAll(artistTasks);
-
-            return fullArtists
-                .Where(a => a != null)
-                .Select(fullArtist => new ArtistInfo(fullArtist.Name, fullArtist.Images.FirstOrDefault()?.Url))
-                .ToList();
-        }
-        catch (APIException ex)
-        {
-            Console.WriteLine($"Spotify API Error in GetPopularArtistsAsync: {ex.Response?.StatusCode} - {ex.Message}");
-            return await GetPopularArtistsFromSearchAsync(limit);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected Error in GetPopularArtistsAsync: {ex.Message}");
-            return new List<ArtistInfo>();
-        }
+        return artistsById.Values
+            .OrderByDescending(a => a.Popularity)
+            .Take(limit)
+            .Select(a => new ArtistInfo(a.Name, a.Images.FirstOrDefault()?.Url))
+            .ToList();
     }
 
     public async Task<List<SpotifySongDto>> GetArtistTopTracksAsync(string artistName, int limit = 10)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null) throw new Exception("Could not authenticate with Spotify");
+        if (_appSpotify == null) throw new Exception("Could not authenticate with Spotify");
 
         try
         {
             Console.WriteLine($"Searching for artist: {artistName}");
 
             var searchRequest = new SearchRequest(SearchRequest.Types.Artist, artistName) { Limit = 20 };
-            var searchResponse = await _spotify.Search.Item(searchRequest);
+            var searchResponse = await _appSpotify.Search.Item(searchRequest);
 
             if (searchResponse.Artists.Items == null || !searchResponse.Artists.Items.Any())
             {
@@ -357,7 +358,7 @@ public class SpotifyService
 
             Console.WriteLine($"  Final chosen artist: {artist.Name} (ID: {artist.Id})");
 
-            var topTracksResponse = await _spotify.Artists.GetTopTracks(artist.Id, new ArtistsTopTracksRequest("US"));
+            var topTracksResponse = await _appSpotify.Artists.GetTopTracks(artist.Id, new ArtistsTopTracksRequest("US"));
 
             if (topTracksResponse.Tracks == null || !topTracksResponse.Tracks.Any())
             {
@@ -472,46 +473,6 @@ public class SpotifyService
         }
     }
 
-    // Fallback method using search for popular artists
-    private async Task<List<ArtistInfo>> GetPopularArtistsFromSearchAsync(int limit)
-    {
-        try
-        {
-            // Search for some popular genres/terms to get popular artists
-            var popularSearchTerms = new[] { "pop", "hip hop", "rock", "taylor swift", "drake", "bad bunny" };
-            var allArtists = new List<ArtistInfo>();
-            var seenArtists = new HashSet<string>();
-
-            foreach (var term in popularSearchTerms)
-            {
-                if (allArtists.Count >= limit) break;
-
-                var searchRequest = new SearchRequest(SearchRequest.Types.Artist, term) { Limit = 10 };
-                var searchResponse = await _spotify!.Search.Item(searchRequest);
-
-                var newArtists = searchResponse.Artists.Items?
-                    .Where(a => !seenArtists.Contains(a.Name))
-                    .Select(a => new ArtistInfo(a.Name, a.Images.FirstOrDefault()?.Url))
-                    .Take(limit - allArtists.Count)
-                    .ToList() ?? new List<ArtistInfo>();
-
-                foreach (var artist in newArtists)
-                {
-                    seenArtists.Add(artist.Name);
-                    allArtists.Add(artist);
-                }
-
-                await Task.Delay(100); // Rate limiting
-            }
-
-            return allArtists.Take(limit).ToList();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error in fallback search: {ex.Message}");
-            return new List<ArtistInfo>();
-        }
-    }
     //helper function
     private string CreateSlug(string input)
     {
@@ -587,7 +548,7 @@ public class SpotifyService
     public async Task<List<string>> GetGenresFromArtistsAsync(List<string> artistNames)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null) throw new Exception("Could not authenticate with Spotify");
+        if (_appSpotify == null) throw new Exception("Could not authenticate with Spotify");
 
         var allGenres = new List<string>();
 
@@ -597,13 +558,13 @@ public class SpotifyService
             {
                 // Search for the artist
                 var searchRequest = new SearchRequest(SearchRequest.Types.Artist, artistName) { Limit = 1 };
-                var searchResponse = await _spotify.Search.Item(searchRequest);
+                var searchResponse = await _appSpotify.Search.Item(searchRequest);
 
                 var artist = searchResponse.Artists.Items?.FirstOrDefault();
                 if (artist == null) continue;
 
                 // Get full artist details for genres
-                var fullArtist = await _spotify.Artists.Get(artist.Id);
+                var fullArtist = await _appSpotify.Artists.Get(artist.Id);
 
                 if (fullArtist.Genres != null && fullArtist.Genres.Count > 0)
                 {
@@ -702,7 +663,7 @@ public class SpotifyService
     public async Task<List<string>> SearchTrackUrisAsync(List<string> songStrings)
     {
         await EnsureClientIsAuthenticatedAsync();
-        if (_spotify == null) return new List<string>();
+        if (_appSpotify == null) return new List<string>();
 
         var uris = new List<string>();
 
@@ -726,7 +687,7 @@ public class SpotifyService
                 }
 
                 var searchRequest = new SearchRequest(SearchRequest.Types.Track, query) { Limit = 1 };
-                var results = await _spotify.Search.Item(searchRequest);
+                var results = await _appSpotify.Search.Item(searchRequest);
 
                 var track = results.Tracks?.Items?.FirstOrDefault();
                 if (track != null)
@@ -760,7 +721,8 @@ public class SpotifyService
             if (string.IsNullOrEmpty(ownerToken)) return;
 
             string? logoBase64 = File.ReadAllLines("Base64Logo.txt").FirstOrDefault();
-            if (string.IsNullOrEmpty(logoBase64)) { logoBase64 = "PlaceHolderBase64String"; };
+            if (string.IsNullOrEmpty(logoBase64)) { logoBase64 = "PlaceHolderBase64String"; }
+            ;
             if (logoBase64 == "PlaceHolderBase64String") return;
 
             // Upload the image
