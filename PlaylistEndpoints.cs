@@ -16,82 +16,89 @@ public static class PlaylistEndpoints
         {
             Console.WriteLine($"  Creating shared playlist for users {userId} & {matchedUserId}");
 
-            // 1. Verify these users are actually a match
             var isMatch = await db.Likes
                 .AnyAsync(l => l.FromUserId == userId && l.ToUserId == matchedUserId && l.IsLike == true) &&
                 await db.Likes
                 .AnyAsync(l => l.FromUserId == matchedUserId && l.ToUserId == userId && l.IsLike == true);
 
             if (!isMatch)
-            {
-                return Results.BadRequest(new
-                {
-                    success = false,
-                    message = "Users are not matched"
-                });
-            }
+                return Results.BadRequest(new { success = false, message = "Users are not matched" });
 
-            // 2. Fetch both users' profiles
-            var user1 = await db.Users
-                .Include(u => u.MusicProfile)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId);
-
-            var user2 = await db.Users
-                .Include(u => u.MusicProfile)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == matchedUserId);
+            var user1 = await db.Users.Include(u => u.MusicProfile).AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            var user2 = await db.Users.Include(u => u.MusicProfile).AsNoTracking().FirstOrDefaultAsync(u => u.Id == matchedUserId);
 
             if (user1 == null || user2 == null)
-            {
                 return Results.NotFound(new { success = false, message = "One or both users not found" });
-            }
 
-            // 3. Get song lists from both profiles
             var songs1 = user1.MusicProfile?.FavoriteSongs ?? new List<string>();
             var songs2 = user2.MusicProfile?.FavoriteSongs ?? new List<string>();
+            var artists1 = user1.MusicProfile?.FavoriteArtists ?? new List<string>();
+            var artists2 = user2.MusicProfile?.FavoriteArtists ?? new List<string>();
 
-            // 4. Interleave songs from both users for a mixed feel
+            // Step 1: interleave favourite songs, deduplicated
             var mergedSongs = InterleaveSongs(songs1, songs2);
 
-            if (!mergedSongs.Any())
-            {
-                return Results.BadRequest(new
-                {
-                    success = false,
-                    message = "No songs found in either user's music profile"
-                });
-            }
+            Console.WriteLine($"  Searching Spotify for {mergedSongs.Count} favourite songs...");
+            var trackUris = (await spotify.SearchTrackUrisAsync(mergedSongs))
+                .Distinct()
+                .ToList();
 
-            // 5. Search Spotify for track URIs
-            Console.WriteLine($"  Searching Spotify for {mergedSongs.Count} songs...");
-            var trackUris = await spotify.SearchTrackUrisAsync(mergedSongs);
+            Console.WriteLine($"  Found {trackUris.Count} tracks from favourites");
+
+            // Step 2: pad up to 50 using top tracks from their artists
+            if (trackUris.Count < 50)
+            {
+                Console.WriteLine($"  Only {trackUris.Count} tracks — padding with artist top tracks...");
+
+                // Interleave artists from both users so we pull from both equally
+                var allArtists = InterleaveLists(artists1, artists2)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var artist in allArtists)
+                {
+                    if (trackUris.Count >= 50) break;
+
+                    try
+                    {
+                        var topTracks = await spotify.GetArtistTopTracksAsync(artist, limit: 10);
+                        foreach (var track in topTracks)
+                        {
+                            if (trackUris.Count >= 50) break;
+                            if (string.IsNullOrEmpty(track.SpotifyUri)) continue;
+
+                            if (!trackUris.Contains(track.SpotifyUri))
+                                trackUris.Add(track.SpotifyUri);
+                        }
+
+                        Console.WriteLine($"  After {artist}: {trackUris.Count} tracks");
+                        await Task.Delay(120); // respect rate limits
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"  Failed to get tracks for {artist}: {ex.Message}");
+                    }
+                }
+            }
 
             if (!trackUris.Any())
-            {
                 return Results.Problem("Could not find any tracks on Spotify for these users' songs.");
-            }
 
-            // 6. Create the playlist
+            Console.WriteLine($"  Final track count: {trackUris.Count}");
+
             string playlistName = $"SpotiLove: {user1.Name} & {user2.Name}";
-            string description =
-                $"A musical match made on SpotiLove 💚 " +
-                $"Songs from {user1.Name} and {user2.Name}'s favorite lists.";
+            string description = $"A musical match made on SpotiLove 💚 Songs from {user1.Name} and {user2.Name}'s favourite lists.";
 
             Console.WriteLine($"  Creating playlist: '{playlistName}'");
             var (playlistId, playlistUrl) = await spotify.CreateCollaborativePlaylistAsync(playlistName, description);
 
             if (string.IsNullOrEmpty(playlistId))
-            {
                 return Results.Problem("Failed to create Spotify playlist. Check the owner refresh token.");
-            }
 
-            // 7. Add tracks (up to 50 to keep it concise)
             var tracksToAdd = trackUris.Take(50).ToList();
             await spotify.AddTracksToPlaylistAsync(playlistId, tracksToAdd);
             Console.WriteLine($"  Added {tracksToAdd.Count} tracks to playlist {playlistId}");
 
-            // 8. Set playlist cover image (SpotiLove logo as base64)
             await spotify.SetPlaylistCoverImageAsync(playlistId);
 
             return Results.Ok(new
@@ -108,6 +115,20 @@ public static class PlaylistEndpoints
             Console.WriteLine($"  Error creating playlist: {ex.Message}");
             return Results.Problem(detail: ex.Message, title: "Failed to create playlist");
         }
+    }
+
+    private static List<string> InterleaveSongs(List<string> list1, List<string> list2)
+    {
+        var result = new List<string>();
+        int max = Math.Max(list1.Count, list2.Count);
+
+        for (int i = 0; i < max; i++)
+        {
+            if (i < list1.Count) result.Add(list1[i]);
+            if (i < list2.Count) result.Add(list2[i]);
+        }
+
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     // GET /matches/{userId}/playlist-status/{matchedUserId}
@@ -130,9 +151,7 @@ public static class PlaylistEndpoints
             canCreatePlaylist = isMatch
         });
     }
-
-    // Interleave songs from two lists (A, B, A, B, ...) for a balanced mix
-    private static List<string> InterleaveSongs(List<string> list1, List<string> list2)
+    private static List<string> InterleaveLists(List<string> list1, List<string> list2)
     {
         var result = new List<string>();
         int max = Math.Max(list1.Count, list2.Count);
@@ -143,6 +162,6 @@ public static class PlaylistEndpoints
             if (i < list2.Count) result.Add(list2[i]);
         }
 
-        return result.Distinct().ToList();
+        return result;
     }
 }
