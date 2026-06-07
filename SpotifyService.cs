@@ -45,7 +45,10 @@ public class SpotifyService
                 Scopes.UserReadPrivate,
                 Scopes.UserTopRead, // Crucial for fetching top artists/songs/genres
                 Scopes.UserReadPlaybackState,
-                Scopes.Streaming
+                Scopes.Streaming,
+                Scopes.PlaylistModifyPublic,
+    Scopes.PlaylistModifyPrivate,
+    Scopes.UgcImageUpload,
             },
             // Note: In a production app, you would generate and check the state parameter for CSRF protection.
         };

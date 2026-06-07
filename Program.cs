@@ -1586,6 +1586,11 @@ app.MapPost("/auth/register", async (
         );
     }
 });
+app.MapGet("/debug/refresh-token", (SpotifyService spotify) =>
+{
+    var token = spotify.GetRefreshToken();
+    return Results.Ok(new { refreshToken = token ?? "not yet — login first" });
+});
 
 app.MapPost("/auth/login", async (
     LoginRequestFromApp request,
