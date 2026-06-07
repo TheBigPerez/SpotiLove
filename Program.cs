@@ -528,12 +528,12 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
                     foreach (var item in batchInserts)
                     {
                         var rows = await db.Database.ExecuteSqlRawAsync(
-                            @"INSERT INTO ""UserSuggestionQueues""
-                              (""UserId"", ""SuggestedUserId"", ""CompatibilityScore"", ""QueuePosition"", ""CreatedAt"")
-                              VALUES ({0}, {1}, {2}, {3}, {4})
-                              ON CONFLICT DO NOTHING",
-                            item.UserId, item.SuggestedUserId,
-                            item.CompatibilityScore, item.QueuePosition, item.CreatedAt);
+                          @"INSERT INTO user_suggestion_queues
+      (user_id, suggested_user_id, compatibility_score, queue_position, created_at)
+      VALUES ({0}, {1}, {2}, {3}, {4})
+      ON CONFLICT DO NOTHING",
+    item.UserId, item.SuggestedUserId,
+    item.CompatibilityScore, item.QueuePosition, item.CreatedAt);
                         if (rows > 0)
                         {
                             queueItems.Add(item);
