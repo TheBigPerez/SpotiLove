@@ -926,17 +926,20 @@ static async Task UpdateQueueScoresInBackground(Guid userId, List<Guid> suggeste
     try
     {
         Console.WriteLine($"Starting background Gemini updates for {suggestedUserIds.Count} users...");
-
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
 
-        var cs = Environment.GetEnvironmentVariable("DATABASE_URL")
+        var cs = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresConnection")
+                 ?? Environment.GetEnvironmentVariable("DATABASE_URL")
                  ?? Environment.GetEnvironmentVariable("DatabaseURL");
 
-        if (cs.StartsWith("postgres://") || cs.StartsWith("postgresql://"))
+        if (string.IsNullOrEmpty(cs))
         {
-            optionsBuilder.UseNpgsql(BuildNpgsqlConnectionString(cs))
-                          .UseSnakeCaseNamingConvention();
+            Console.WriteLine("Background task: no connection string found, skipping.");
+            return;
         }
+
+        optionsBuilder.UseNpgsql(ParseToNpgsqlConnectionString(cs))
+                      .UseSnakeCaseNamingConvention();
 
         using var db = new AppDbContext(optionsBuilder.Options);
 
