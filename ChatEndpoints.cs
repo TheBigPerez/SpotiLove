@@ -134,6 +134,8 @@ public static class ChatEndpoints
                 await db.SaveChangesAsync();
             }
 
+            Console.WriteLine($"GetMessages: userId={userId} otherUserId={otherUserId}");
+            Console.WriteLine($"Messages found: {messages.Count}");
             return Results.Ok(new
             {
                 success = true,
@@ -200,7 +202,7 @@ public static class ChatEndpoints
 
             db.Messages.Add(message);
             await db.SaveChangesAsync();
-
+            Console.WriteLine($"SendMessage called: from={request.FromUserId} to={request.ToUserId} content={request.Content}");
             return Results.Ok(new
             {
                 success = true,
