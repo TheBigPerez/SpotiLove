@@ -425,45 +425,38 @@ public class SpotifyService
         try
         {
             using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(5);
+            httpClient.Timeout = TimeSpan.FromSeconds(8);
 
-            var query = Uri.EscapeDataString($"{trackName} {artistName}");
+            // Try artist+track query first
+            var query = Uri.EscapeDataString($"artist:\"{artistName}\" track:\"{trackName}\"");
             var deezerUrl = $"https://api.deezer.com/search?q={query}&limit=5";
 
             var response = await httpClient.GetAsync(deezerUrl);
+
+            // Fallback to simpler query if advanced fails
             if (!response.IsSuccessStatusCode)
             {
-                return null;
+                query = Uri.EscapeDataString($"{artistName} {trackName}");
+                deezerUrl = $"https://api.deezer.com/search?q={query}&limit=5";
+                response = await httpClient.GetAsync(deezerUrl);
             }
+
+            if (!response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(json);
 
-            var data = doc.RootElement.GetProperty("data");
-            if (data.GetArrayLength() == 0)
-            {
-                return null;
-            }
+            if (!doc.RootElement.TryGetProperty("data", out var data)) return null;
+            if (data.GetArrayLength() == 0) return null;
 
-            // Find best match
+            // Return first result that has a preview URL
             foreach (var item in data.EnumerateArray())
             {
-                var title = item.GetProperty("title").GetString() ?? "";
-                var artist = item.GetProperty("artist").GetProperty("name").GetString() ?? "";
-
-                // Check if it's a good match
-                if (title.Contains(trackName, StringComparison.OrdinalIgnoreCase) ||
-                    trackName.Contains(title, StringComparison.OrdinalIgnoreCase))
+                if (item.TryGetProperty("preview", out var previewElement))
                 {
-                    if (item.TryGetProperty("preview", out var previewElement))
-                    {
-                        var previewUrl = previewElement.GetString();
-                        if (!string.IsNullOrEmpty(previewUrl))
-                        {
-                            Console.WriteLine($"  Found Deezer preview: {trackName}");
-                            return previewUrl;
-                        }
-                    }
+                    var previewUrl = previewElement.GetString();
+                    if (!string.IsNullOrEmpty(previewUrl))
+                        return previewUrl;
                 }
             }
 
@@ -471,11 +464,11 @@ public class SpotifyService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"     Deezer search failed for '{trackName}': {ex.Message}");
+            Console.WriteLine($"Deezer search failed for '{trackName}': {ex.Message}");
             return null;
         }
     }
-
+    
     //helper function
     private string CreateSlug(string input)
     {
