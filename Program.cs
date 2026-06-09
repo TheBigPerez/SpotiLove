@@ -632,8 +632,7 @@ app.MapGet("/users", async (AppDbContext db, [FromQuery] Guid? userId, [FromQuer
 .WithName("GetUsersForSwipe")
 .WithSummary("Get personalized user suggestions with smart caching")
 .WithDescription("Requires ?userId={id} and optional &count={1–50} for results.");
-// Add this endpoint to Program.cs for quick database population
-// Place this AFTER your other endpoints but BEFORE app.Run()
+
 app.MapPost("/dev/populate-users", async (AppDbContext db, int count = 50) =>
 {
     try

@@ -344,10 +344,33 @@ public static class Endpoints
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == id);
 
-        if (user == null) return Results.NotFound("User not found");
-        return Results.Ok(user);
-    }
+        if (user == null)
+            return Results.NotFound(new { success = false, message = "User not found" });
 
+        // Return same wrapped format that all MAUI consumers expect: { success, user }
+        return Results.Ok(new
+        {
+            success = true,
+            user = new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Age = user.Age,
+                Location = user.Location ?? "",
+                Bio = user.Bio ?? "",
+                Gender = user.Gender ?? "",
+                SexualOrientation = user.SexualOrientation,
+                MusicProfile = user.MusicProfile != null ? new MusicProfileDto
+                {
+                    FavoriteArtists = user.MusicProfile.FavoriteArtists ?? new List<string>(),
+                    FavoriteGenres = user.MusicProfile.FavoriteGenres ?? new List<string>(),
+                    FavoriteSongs = user.MusicProfile.FavoriteSongs ?? new List<string>(),
+                } : new MusicProfileDto(),
+                Images = user.Images.Select(i => i.ImageUrl).ToList()
+            }
+        });
+    }
     public static async Task<IResult> UpdateProfile(AppDbContext db, Guid id, UpdateProfileDto dto)
     {
         var user = await db.Users
