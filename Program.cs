@@ -861,7 +861,7 @@ static UserDto ToUserDto(User user) => new()
         FavoriteArtists = user.MusicProfile.FavoriteArtists ?? new(),
         FavoriteSongs = user.MusicProfile.FavoriteSongs ?? new()
     } : new MusicProfileDto(),
-    Images = [.. user.Images.Select(i => i.ImageUrl ?? i.Url)]
+    Images = [.. user.Images.Select(i => ImageUrlHelper.Resolve(user.Id, i.ImageUrl))]
 };
 static double CalculateLocalCompatibility(MusicProfile p1, MusicProfile p2, User u1, User u2)
 {
@@ -1531,6 +1531,15 @@ app.MapPost("/auth/register", async (
         var saveResult = await db.SaveChangesAsync();
         Console.WriteLine($"  SaveChanges returned: {saveResult} changes");
         Console.WriteLine($"  User ID assigned: {user.Id}");
+        if (!string.IsNullOrWhiteSpace(request.ProfileImage))
+        {
+            db.UserImages.Add(new UserImage
+            {
+                UserId = user.Id,
+                ImageUrl = request.ProfileImage // base64
+            });
+            await db.SaveChangesAsync();
+        }
         if (user.Id == Guid.Empty)
         {
             Console.WriteLine("  User ID was not assigned properly!");
@@ -1585,6 +1594,32 @@ app.MapPost("/auth/register", async (
         );
     }
 });
+app.MapGet("/users/{id:guid}/avatar", async (AppDbContext db, Guid id) =>
+{
+    var img = await db.UserImages
+        .Where(i => i.UserId == id)
+        .Select(i => i.ImageUrl)
+        .FirstOrDefaultAsync();
+
+    if (string.IsNullOrWhiteSpace(img)) return Results.NotFound();
+
+    // already a web link? just bounce to it
+    if (img.StartsWith("http")) return Results.Redirect(img);
+
+    // strip "data:image/...;base64," if present
+    var comma = img.IndexOf(',');
+    if (img.StartsWith("data:") && comma >= 0) img = img[(comma + 1)..];
+
+    try
+    {
+        var bytes = Convert.FromBase64String(img);
+        return Results.File(bytes, "image/jpeg");
+    }
+    catch { return Results.NotFound(); }
+})
+.WithName("GetUserAvatar")
+.WithSummary("Serve a user's stored picture as real image bytes");
+
 app.MapGet("/debug/refresh-token", (SpotifyService spotify) =>
 {
     var token = spotify.GetRefreshToken();

@@ -57,11 +57,11 @@ public static class ChatEndpoints
                 {
                     userId = otherUser.Id,
                     name = otherUser.Name,
-                    profileImage = otherUser.Images.FirstOrDefault()?.ImageUrl ?? "default_user.png",
+                    profileImage = ImageUrlHelper.Resolve(otherUser.Id, otherUser.Images.FirstOrDefault()?.ImageUrl),
                     lastMessage = lastMessage?.Content ?? "",
                     lastMessageTime = lastMessage?.SentAt ?? DateTime.UtcNow,
                     unreadCount = unreadCount,
-                    isOnline = false // You can implement online status later
+                    isOnline = false
                 });
             }
 

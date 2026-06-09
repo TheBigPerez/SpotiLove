@@ -197,6 +197,17 @@ public static class DtoMappers
 // =======================================================
 // ===== DTOs (Data Transfer Objects) and Requests =======
 // =======================================================
+public static class ImageUrlHelper
+{
+    public const string BaseUrl = "https://spotilove.danielnaz.com";
+
+    public static string Resolve(Guid userId, string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return "default_user.png";
+        if (stored.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return stored; // pravatar etc.
+        return $"{BaseUrl}/users/{userId}/avatar"; // base64 -> serve it as a link
+    }
+}
 public class MusicProfileDto
 {
     public List<string> FavoriteGenres { get; set; } = new();
@@ -288,6 +299,7 @@ public record BatchCalculateRequest(
     Guid UserId,
     List<Guid> TargetUserIds
 );
+
 
 public class ResponseMessage
 {
